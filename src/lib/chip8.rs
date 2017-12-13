@@ -1,4 +1,6 @@
-extern crate rand;
+
+pub mod chip8 {
+    extern crate rand;
 
 use std;
 use std::error;
@@ -48,6 +50,7 @@ pub struct Chip8 {
     pub video: [u8; 256],
     stack: [u16; 16],
     pub step: u64,
+    pub pitch: u32,
 }
 
 impl Chip8 {
@@ -63,6 +66,7 @@ impl Chip8 {
             dt: 0,
             st: 0,
             step: 0,
+            pitch: 8,
         }
     }
 
@@ -140,13 +144,11 @@ impl Chip8 {
     }
 
     fn ld_byte(&mut self, x: usize, byte: u8) -> Result<(), Chip8Error> {
-        // TODO > 15
         self.v[x] = byte;
         Ok(())
     }
 
     fn ld_reg(&mut self, x: usize, y: usize) -> Result<(), Chip8Error> {
-        // TODO > 15
         self.v[x] = self.v[y];
         Ok(())
     }
@@ -233,7 +235,7 @@ impl Chip8 {
         Ok(())
     }
 
-    fn ld_key(&mut self, x: usize) -> Result<(), Chip8Error> {
+    fn ld_key(&mut self, _x: usize) -> Result<(), Chip8Error> {
         // TODO keypress
         Ok(())
     }
@@ -274,15 +276,16 @@ impl Chip8 {
 
             let video_addr = y_offset + (x_offset as usize);
 
-            if video_addr >= 256 {
+            if video_addr >= 255 { // TODO fix
                 break;
             }
 
             let byte_0 = self.video[video_addr];
             let byte_1 = self.video[video_addr + 1];
             //println!("  from byte 0: {:08b}, byte 1: {:08b}", byte_0, byte_1);
-
+            println!("mem before: {:08b} XORing: {:08b}",self.video[video_addr], mem_byte >> x_bit);
             self.video[video_addr] ^= mem_byte >> x_bit;
+            println!("mem after: {:08b}", self.video[video_addr]);
 
             if x_bit > 0 {
                 self.video[video_addr + 1] ^= mem_byte << (8 - x_bit);
@@ -317,7 +320,7 @@ impl Chip8 {
         let value = self.v[x];
         let addr = self.i as usize;
 
-        self.memory[addr] = (value % 1000) / 100;
+        self.memory[addr] = ((value as u16 % 1000) / 100) as u8;
         self.memory[addr + 1] = (value % 100) / 10;
         self.memory[addr + 2] = value % 10;
 
@@ -359,13 +362,32 @@ impl Chip8 {
         let instruction: u16 = self.fetch_instruction(pc)?;
         self.pc += 2;
 
-        let addr = instruction & 0xFFF;
-        let byte: u8 = (instruction & 0xFF) as u8;
-        let nibble = (instruction & 0xF) as u8;
+        let result = self.execute(instruction);
+
+        self.step += 1;
+
+        result
+    }
+
+    pub fn execute_m(&mut self, instructions: &[u16]) -> Result<(), Chip8Error> {
+        for instruction in instructions.iter() {
+            if let Err(err) = self.execute(*instruction) {
+                return Err(err);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn execute(&mut self, instruction: u16) -> Result<(), Chip8Error> {
+
+        let addr = instruction & 0x0FFF;
+        let byte: u8 = (instruction & 0x00FF) as u8;
+        let nibble = (instruction & 0x000F) as u8;
         let x: usize = (instruction >> 8 & 0xF) as usize;
         let y: usize = (instruction >> 4 & 0xF) as usize;
 
-        let result = match instruction {
+        match instruction {
             0x00E0 => self.cls(),
             0x00EE => self.ret(),
             i if i & 0xF000 == 0x1000 => self.jp(addr),
@@ -401,11 +423,7 @@ impl Chip8 {
             i if i & 0xF0FF == 0xF055 => self.save(x),
             i if i & 0xF0FF == 0xF065 => self.restore(x),
             _ => Err(Chip8Error::NotImplementedError)
-        };
-
-        self.step += 1;
-
-        result
+        }
     }
 
     pub fn disassemble(&mut self, instruction: u16) -> Result<String, Chip8Error> {
@@ -494,4 +512,5 @@ impl Chip8 {
 
         return Ok(bytes_read);
     }
+}
 }

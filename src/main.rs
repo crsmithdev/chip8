@@ -7,19 +7,21 @@ extern crate rand;
 extern crate sdl2;
 extern crate sdl2_sys;
 extern crate libc;
-mod chip8;
+
+extern crate lib;
+use lib::chip8::chip8::{Chip8, Chip8Error};
 
 use std::path::Path;
-use std::fs::File;
+// use std::fs::File;
 use std::error::Error;
 
 use sdl2::pixels::PixelFormatEnum;
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::render::{Canvas, Texture};
-use sdl2::video::Window;
-use sdl2::ttf::Font;
+use sdl2::render::{Canvas, Texture, TextureCreator};
+use sdl2::video::{Window, WindowContext};
+use sdl2::ttf::{Font, Sdl2TtfContext};
 use sdl2::rect::Rect;
 use sdl2::rect::Point;
 
@@ -28,9 +30,14 @@ use std::thread;
 use std::time::Duration;
 
 const FONT_SIZE: u16 = 28;
+const WINDOW_WIDTH: u32 = 1024;
+const WINDOW_HEIGHT: u32 = 695;
+
+type TextureCreator2 = TextureCreator<WindowContext>;
+
 
 lazy_static! {
-    static ref FONT_PATH: &'static Path = Path::new("./SourceCodePro-Semibold.ttf");
+    static ref FONT_PATH: &'static Path = Path::new("../resources/SourceCodePro-Semibold.ttf");
 
     static ref TEXT_COLOR: Color = Color::RGBA(0xFD, 0xF6, 0xE3, 0xFF);
     static ref BG_COLOR: Color = Color::RGBA(0x00, 0x2B, 0x36, 0xFF);
@@ -46,6 +53,7 @@ lazy_static! {
     static ref STATUS_FRAME: Rect = Rect::new(1582, 1220, 446, 150);
 }
 
+
 pub struct GfxSubsystem<'ttf, 'b> {
     font: Font<'ttf, 'b>,
     canvas: Canvas<Window>,
@@ -55,7 +63,14 @@ pub struct GfxSubsystem<'ttf, 'b> {
 
 impl <'ttf, 'b> GfxSubsystem<'ttf, 'b> {
 
-    pub fn new(canvas: Canvas<Window>, font: Font<'ttf, 'b>, screen: Texture<'b>) -> GfxSubsystem<'ttf, 'b> {
+    pub fn new(canvas: Canvas<Window>, ttf_context: &'ttf mut Sdl2TtfContext, texture_creator: &'b TextureCreator2) -> GfxSubsystem<'ttf, 'b> {
+
+        let mut font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
+        font.set_hinting(sdl2::ttf::Hinting::Mono);
+
+        let screen = texture_creator
+            .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
+            .unwrap();
 
         GfxSubsystem {
             font: font,
@@ -65,7 +80,7 @@ impl <'ttf, 'b> GfxSubsystem<'ttf, 'b> {
         }
     }
 
-    fn redraw(&mut self, vm: &mut chip8::Chip8) {
+    fn redraw(&mut self, vm: &mut Chip8) {
 
         self.canvas.set_draw_color(*BG_COLOR);
         self.canvas.clear();
@@ -95,7 +110,7 @@ impl <'ttf, 'b> GfxSubsystem<'ttf, 'b> {
         self.canvas.draw_line(ul, ll).unwrap();
     }
 
-    fn draw_screen(&mut self, vm: &mut chip8::Chip8) {
+    fn draw_screen(&mut self, vm: &mut Chip8) {
         self.draw_panel(*SCREEN_FRAME);
 
         let vm_pitch = vm.video.len() / 32;
@@ -140,7 +155,7 @@ impl <'ttf, 'b> GfxSubsystem<'ttf, 'b> {
         self.draw_text(&text, x, y, *TEXT_COLOR);
     }
 
-    fn draw_status(&mut self, vm: &mut chip8::Chip8) {
+    fn draw_status(&mut self, vm: &mut Chip8) {
         let panel = *STATUS_FRAME;
         let spacing = self.font.recommended_line_spacing();
         self.draw_panel(panel);
@@ -162,43 +177,50 @@ impl <'ttf, 'b> GfxSubsystem<'ttf, 'b> {
 
         let text = "    ?? = ??";
         self.draw_text(&text, x, y, *TEXT_COLOR);
-        y += spacing;
 
     }
 
-    fn draw_instructions(&mut self, vm: &mut chip8::Chip8) {
+    fn draw_instructions(&mut self, vm: &mut Chip8) {
         let panel = *INSTRUCTION_FRAME;
         let spacing = self.font.recommended_line_spacing();
         let hihglight_width = panel.width() - 10;
+        let x = panel.left() + 5;
+        let mut y = panel.top();
 
         self.draw_panel(panel);
-
-        let x = panel.left() + 5;
-        let mut y = panel.top() + 0;
 
         if vm.pc < self.address || vm.pc - self.address > 30 || vm.pc - self.address < 4 {
             self.address = vm.pc - 4;
         }
 
-        let mut i = self.address;
-        let max = i + 32;
-        while i < max {
-            let instruction = vm.fetch_instruction(i).unwrap();
-            let dis =vm.disassemble(instruction).unwrap();
-            let text = format!("{:04X}: {}", i, dis);
+        for offset in 0..16 {
+            let addr = self.address + offset * 2;
 
-            if vm.pc == i {
+            if vm.pc == addr {
                 self.canvas.set_draw_color(*INSTRUCTION_HL_COLOR);
                 self.canvas.fill_rect(Rect::new(x - 1, y + 1, hihglight_width, spacing as u32)).unwrap();
             }
 
-            self.draw_text(&text, x, y, *TEXT_COLOR);
+            match vm.fetch_instruction(addr) {
+                Ok(instruction) => {
+                    match vm.disassemble(instruction) {
+                        Ok(text) => {
+                            let text = format!("{:04X}: {}", addr, text);
+                            self.draw_text(&text, x, y, *TEXT_COLOR);
+                        },
+                        Err(err) => self.draw_text(err.description(), x, y, *TEXT_COLOR),
+                    }
+                },
+                Err(err) => {
+                    self.draw_text(err.description(), x, y, *TEXT_COLOR)
+                }
+            };
+
             y += spacing;
-            i += 2;
         }
     }
 
-    fn draw_registers(&mut self, vm: &mut chip8::Chip8) {
+    fn draw_registers(&mut self, vm: &mut Chip8) {
 
         let panel = *REGISTER_FRAME;
         let spacing = self.font.recommended_line_spacing();
@@ -251,8 +273,8 @@ impl <'ttf, 'b> GfxSubsystem<'ttf, 'b> {
 struct System<'a, 'b> {
     event_pump: sdl2::EventPump,
     paused: bool,
-    vm_error: Option<chip8::Chip8Error>,
-    vm: chip8::Chip8,
+    vm_error: Option<Chip8Error>,
+    vm: Chip8,
     gfx: GfxSubsystem<'a, 'b>,
 }
 
@@ -260,17 +282,44 @@ impl <'a, 'b> System<'a, 'b> {
 
     fn new(gfx: GfxSubsystem<'a, 'b>, event_pump: sdl2::EventPump) -> System<'a, 'b> {
 
+        /*
         let path = Path::new("roms/BRIX");
         let mut file = match File::open(&path) {
             Err(err) => panic!("couldn't open {}: {}", path.display(), err.description()),
             Ok(file) => file,
         };
+        */
+        let mut boot: &[u8] = &[
+            0xA2, 0x5B, 0x60, 0x0B, 0x61, 0x03, 0x62, 0x07,
+            0xD0, 0x17, 0x70, 0x07, 0xF2, 0x1E, 0xD0, 0x17,
+            0x70, 0x07, 0xF2, 0x1E, 0xD0, 0x17, 0x70, 0x07,
+            0xF2, 0x1E, 0xD0, 0x17, 0x70, 0x07, 0xF2, 0x1E,
+            0xD0, 0x17, 0x70, 0x05, 0xF2, 0x1E, 0xD0, 0x17,
+            0xF2, 0x1E, 0xA2, 0x5A, 0xC0, 0x3F, 0xC1, 0x1F,
+            0x62, 0x01, 0x63, 0x01, 0xD0, 0x11, 0x64, 0x02,
+            0xF4, 0x15, 0xF4, 0x07, 0x34, 0x00, 0x12, 0x3A,
+            0xD0, 0x11, 0x80, 0x24, 0x81, 0x34, 0xD0, 0x11,
+            0x41, 0x00, 0x63, 0x01, 0x41, 0x1F, 0x63, 0xFF,
+            0x40, 0x00, 0x62, 0x01, 0x40, 0x3F, 0x62, 0xFF,
+            0x12, 0x36, 0x80, 0x78, 0xCC, 0xC0, 0xC0, 0xC0,
+            0xCC, 0x78, 0xCC, 0xCC, 0xCC, 0xFC, 0xCC, 0xCC,
+            0xCC, 0xFC, 0x30, 0x30, 0x30, 0x30, 0x30, 0xFC,
+            0xF8, 0xCC, 0xCC, 0xF8, 0xC0, 0xC0, 0xC0, 0x00,
+            0x00, 0x00, 0xF0, 0x00, 0x00, 0x00, 0x78, 0xCC,
+            0xCC, 0x78, 0xCC, 0xCC, 0x78,
+        ];
+        let mut vm = Chip8::new();
+        //let mut buf = File::create("DEMO").unwrap();
+        //buf.write_all(boot);
 
-        let mut vm = chip8::Chip8::new();
-        match vm.load_rom(&mut file) {
+        //match vm.load_rom(&mut file) {
+        vm.load_rom(&mut boot).unwrap();
+        /*
+        match vm.load_rom(&mut boot) {
             Err(err) => panic!("couldn't read {}: {}", path.display(), err.description()),
             Ok(_) => (),
         }
+        */
 
         System {
             event_pump: event_pump,
@@ -324,7 +373,7 @@ impl <'a, 'b> System<'a, 'b> {
                 _ = vm_rx.recv() => {
 
                     if !self.paused {
-                        if let Err(err) = self.vm.step() {
+                        if let Err(_) = self.vm.step() {
                             self.paused = true;
                         }
                     }
@@ -337,25 +386,27 @@ impl <'a, 'b> System<'a, 'b> {
     }
 }
 
-
 fn main() {
 
     let sdl_context = sdl2::init().unwrap();
-    let ttf_context = sdl2::ttf::init().unwrap();
+    let mut ttf_context = sdl2::ttf::init().unwrap();
     let event_pump = sdl_context.event_pump().unwrap();
 
-    let mut font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
-    font.set_hinting(sdl2::ttf::Hinting::Mono);
+    let window = sdl_context
+        .video().unwrap()
+        .window("CHIP-8", WINDOW_WIDTH, WINDOW_HEIGHT)
+        .allow_highdpi()
+        .build().unwrap();
 
-    let video_subsystem = sdl_context.video().unwrap();
-    let window = video_subsystem.window("chip-8", 1024, 695).allow_highdpi().build().unwrap();
+    let canvas = window
+        .into_canvas()
+        .present_vsync()
+        .build().unwrap();
 
-    let canvas = window.into_canvas().present_vsync().build().unwrap();
     let texture_creator = canvas.texture_creator();
-    let screen = texture_creator.create_texture_streaming(
-        PixelFormatEnum::RGB24, 64, 32).unwrap();
 
-    let gfx = GfxSubsystem::new(canvas, font, screen);
+    let gfx = GfxSubsystem::new(canvas, &mut ttf_context, &texture_creator);
     let mut system = System::new(gfx, event_pump);
+
     system.run();
 }
