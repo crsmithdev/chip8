@@ -17,4 +17,3 @@ lazy_static = "1.0"
 version = "0.31"
 default-features = false
 features = ["ttf"]
-sdl2 = "0.31"

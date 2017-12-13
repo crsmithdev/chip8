@@ -37,7 +37,7 @@ type TextureCreator2 = TextureCreator<WindowContext>;
 
 
 lazy_static! {
-    static ref FONT_PATH: &'static Path = Path::new("../resources/SourceCodePro-Semibold.ttf");
+    static ref FONT_PATH: &'static Path = Path::new("../../resources/SourceCodePro-Semibold.ttf");
 
     static ref TEXT_COLOR: Color = Color::RGBA(0xFD, 0xF6, 0xE3, 0xFF);
     static ref BG_COLOR: Color = Color::RGBA(0x00, 0x2B, 0x36, 0xFF);
