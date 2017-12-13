@@ -1,15 +1,17 @@
 extern crate lib;
-use lib::chip8::chip8;
+use lib::vm;
 
 #[cfg(test)]
 mod integration_tests {
 
+    /*
     fn mem_eq(left: &[u8], right: &[u8]) -> bool {
         (left.len() == right.len()) &&
         left.iter()
         .zip(right)
         .all(|(a,b)| a == b)
     }
+    */
 
     fn to_instruction(string: &str) -> u16 {
         u16::from_str_radix(string, 16).unwrap()
@@ -35,7 +37,7 @@ mod integration_tests {
 
     #[test]
     fn test_ld_byte() {
-        let mut vm = chip8::Chip8::new();
+        let mut vm = vm::Chip8::new();
 
         for i in 0..16 {
             let instruction = to_instruction(&format!("6{:X}FF", i));
@@ -47,7 +49,7 @@ mod integration_tests {
 
     #[test]
     fn test_ld_reg() {
-        let mut vm = chip8::Chip8::new();
+        let mut vm = vm::Chip8::new();
 
         vm.execute(0x60FF).unwrap();
 
@@ -60,12 +62,12 @@ mod integration_tests {
 
     #[test]
     fn test_drw() {
-        let mut vm = chip8::Chip8::new();
+        let mut vm = vm::Chip8::new();
 
         let sprite = 0b10000000;
-        let addr: u8 = 512;
+        let addr: u16 = 512;
         vm.memory[addr as usize] = sprite;
-        vm.i = addr as u16;
+        vm.i = addr;
         vm.v[0] = 0;
         vm.v[1] = 0;
 

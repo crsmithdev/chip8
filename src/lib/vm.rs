@@ -1,6 +1,4 @@
-
-pub mod chip8 {
-    extern crate rand;
+extern crate rand;
 
 use std;
 use std::error;
@@ -512,5 +510,4 @@ impl Chip8 {
 
         return Ok(bytes_read);
     }
-}
 }

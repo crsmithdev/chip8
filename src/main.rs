@@ -9,7 +9,7 @@ extern crate sdl2_sys;
 extern crate libc;
 
 extern crate lib;
-use lib::chip8::chip8::{Chip8, Chip8Error};
+use lib::vm::{Chip8, Chip8Error};
 
 use std::path::Path;
 // use std::fs::File;
