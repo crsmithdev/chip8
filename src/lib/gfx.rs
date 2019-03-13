@@ -9,7 +9,7 @@ use sdl2::render::{Canvas, Texture, TextureCreator};
 use sdl2::video::{Window, WindowContext};
 use sdl2::ttf::{Font, Sdl2TtfContext};
 
-use vm::{disassemble, Chip8State};
+use cpu::{disassemble, Chip8State};
 
 const FONT_SIZE: u16 = 28;
 
@@ -26,10 +26,9 @@ lazy_static! {
 
     static ref SCREEN_TARGET: Rect = Rect::new(24, 24, 1536, 768);
     static ref SCREEN_FRAME: Rect = Rect::new(20, 20, 1540, 772);
-    static ref LOG_FRAME: Rect = Rect::new(20, 808, 1540, 563);
+    static ref LOG_FRAME: Rect = Rect::new(20, 808, 1540, 392);
     static ref INSTRUCTION_FRAME: Rect = Rect::new(1582, 20, 446, 580);
     static ref REGISTER_FRAME: Rect = Rect::new(1582, 620, 446, 580);
-    static ref STATUS_FRAME: Rect = Rect::new(1582, 1220, 446, 150);
 }
 
 pub struct GfxSubsystem<'ttf, 'b> {
@@ -68,7 +67,6 @@ impl<'ttf, 'b> GfxSubsystem<'ttf, 'b> {
         self.draw_log();
         self.draw_instructions(state);
         self.draw_registers(state);
-        self.draw_status(state);
 
         self.canvas.present();
     }
@@ -130,31 +128,7 @@ impl<'ttf, 'b> GfxSubsystem<'ttf, 'b> {
         let x = panel.left() + 5;
         let y = panel.top() + 3;
 
-        let text = "HERE IS A CONSOLE WITH SOME TEXT IN IT";
-        self.draw_text(&text, x, y, *TEXT_COLOR);
-    }
-
-    fn draw_status(&mut self, _state: &Chip8State) {
-        let panel = *STATUS_FRAME;
-        let spacing = self.font.recommended_line_spacing();
-        self.draw_panel(panel);
-
-        let x = panel.left() + 5;
-        let mut y = panel.top() + 3;
-
-        let text = " VM HZ = ??";
-        self.draw_text(&text, x, y, *TEXT_COLOR);
-        y += spacing;
-
-        let text = "VID HZ = ??";
-        self.draw_text(&text, x, y, *TEXT_COLOR);
-        y += spacing;
-
-        let text = format!("  STEP = {}", 1); //vm.step);
-        self.draw_text(&text, x, y, *TEXT_COLOR);
-        y += spacing;
-
-        let text = "    ?? = ??";
+        let text = " ";
         self.draw_text(&text, x, y, *TEXT_COLOR);
     }
 
@@ -187,7 +161,10 @@ impl<'ttf, 'b> GfxSubsystem<'ttf, 'b> {
                     let text = format!("{:04X}: {}", addr, text);
                     self.draw_text(&text, x, y, *TEXT_COLOR);
                 }
-                Err(err) => self.draw_text(err.description(), x, y, *TEXT_COLOR),
+                Err(err) => {
+                    let text = format!("{:04X}: {}", addr, err.description());
+                    self.draw_text(&text, x, y, *TEXT_COLOR);
+                }
             };
 
             y += spacing;

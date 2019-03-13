@@ -1,42 +1,66 @@
-extern crate sdl2;
-extern crate lib;
+#![feature(mpsc_select)]
 
-use lib::ui::{System, SystemSdl2Context};
-use lib::vm::Chip8;
-use lib::rom;
+extern crate lib;
+extern crate sdl2;
+
+use lib::vm::Vm;
+use lib::timer::Timer;
+use lib::gfx::GfxSubsystem;
+
+use sdl2::keyboard::Keycode;
+use sdl2::event::Event;
 
 const WINDOW_WIDTH: u32 = 1024;
-const WINDOW_HEIGHT: u32 = 695;
+const WINDOW_HEIGHT: u32 = 610;
 
 fn main() {
-
     let sdl_context = sdl2::init().unwrap();
     let ttf_context = sdl2::ttf::init().unwrap();
-    let event_pump = sdl_context.event_pump().unwrap();
+    let mut event_pump = sdl_context.event_pump().unwrap();
 
     let window = sdl_context
-        .video().unwrap()
+        .video()
+        .unwrap()
         .window("CHIP-8", WINDOW_WIDTH, WINDOW_HEIGHT)
         .allow_highdpi()
-        .build().unwrap();
+        .build()
+        .unwrap();
 
-    let canvas = window
-        .into_canvas()
-        .present_vsync()
-        .build().unwrap();
+    let canvas = window.into_canvas().present_vsync().build().unwrap();
 
     let texture_creator = canvas.texture_creator();
 
-    let system_context = SystemSdl2Context {
-        canvas: canvas,
-        ttf: &ttf_context,
-        texture_creator: &texture_creator,
-        event_pump: event_pump,
-    };
+    let mut gfx = GfxSubsystem::new(canvas, &ttf_context, &texture_creator);
+    let mut vm = Vm::new();
+    let timer = Timer::new();
+    let receiver = &timer.receiver;
 
-    let mut vm = Chip8::new();
-    vm.load_rom(&rom::BOOT).unwrap();
-    let mut system = System::new(system_context, vm);
+    vm.run();
 
-    system.run();
+    'running: loop {
+        for event in event_pump.poll_iter() {
+            match event {
+                Event::Quit { .. } => break 'running,
+                Event::KeyDown {
+                    keycode: Some(code),
+                    ..
+                } => match code {
+                    Keycode::Escape => break 'running,
+                    Keycode::LeftBracket => vm.speed(1.0 / 1.5),
+                    Keycode::RightBracket => vm.speed(1.5),
+                    Keycode::F5 => vm.pause(),
+                    Keycode::F6 => vm.step(),
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
+
+        select! {
+            _ = receiver.recv() => {
+                let state = vm.state();
+                gfx.redraw(&state);
+            }
+        }
+    }
 }
