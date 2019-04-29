@@ -1,11 +1,11 @@
-#![feature(mpsc_select)]
-
 extern crate lib;
 extern crate sdl2;
 
-use lib::vm::Vm;
-use lib::timer::Timer;
 use lib::gfx::GfxSubsystem;
+use lib::cpu::{Chip8};
+use std::time::{SystemTime, Duration};
+use std::thread;
+use lib::rom;
 
 use sdl2::keyboard::Keycode;
 use sdl2::event::Event;
@@ -31,11 +31,11 @@ fn main() {
     let texture_creator = canvas.texture_creator();
 
     let mut gfx = GfxSubsystem::new(canvas, &ttf_context, &texture_creator);
-    let mut vm = Vm::new();
-    let timer = Timer::new();
-    let receiver = &timer.receiver;
+    let mut vm = Chip8::new();
+    vm.load_rom(&rom::BOOT).unwrap();
+    let freq = 500;
 
-    vm.run();
+    let mut last_time = SystemTime::now();
 
     'running: loop {
         for event in event_pump.poll_iter() {
@@ -46,21 +46,32 @@ fn main() {
                     ..
                 } => match code {
                     Keycode::Escape => break 'running,
+                    /*
                     Keycode::LeftBracket => vm.speed(1.0 / 1.5),
                     Keycode::RightBracket => vm.speed(1.5),
                     Keycode::F5 => vm.pause(),
                     Keycode::F6 => vm.step(),
+                    */
                     _ => (),
                 },
                 _ => (),
             }
         }
 
-        select! {
-            _ = receiver.recv() => {
-                let state = vm.state();
-                gfx.redraw(&state);
+        let now = SystemTime::now();
+        let elapsed = now.duration_since(last_time).unwrap().as_millis();
+        last_time = now;
+        let cycles = elapsed * (1000 / freq);
+        for _ in 0..cycles {
+            if let Err(err) = vm.step() {
+                println!("error: {:?}", err);
+                break;
             }
         }
+
+        let state = vm.state();
+        gfx.redraw(&state);
+
+        thread::sleep(Duration::from_millis(5));
     }
 }
