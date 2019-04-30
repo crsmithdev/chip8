@@ -437,7 +437,6 @@ impl Chip8 {
         }
     }
 
-
     pub fn fetch(&mut self, address: usize) -> Result<u16, Chip8Error> {
         match address {
             i if i >= MEMORY_SIZE - 1 => Err(Chip8Error::AddressOutOfRangeError),
