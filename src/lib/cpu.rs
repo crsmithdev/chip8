@@ -2,6 +2,7 @@ extern crate rand;
 
 use std::error::Error;
 use std::fmt;
+use std::string::String;
 
 const MEMORY_SIZE: usize = 0x1000;
 const PROGRAM_START: usize = 0x200;
@@ -85,101 +86,75 @@ impl Chip8 {
         }
     }
 
-    fn cls(&mut self) -> Result<(), Chip8Error> {
+    fn cls(&mut self) {
         for i in 0..self.video.len() {
             self.video[i] = 0;
         }
-        Ok(())
     }
 
-    fn ret(&mut self) -> Result<(), Chip8Error> {
-        match self.sp {
-            i if i < 1 => Err(Chip8Error::StackUnderflowError),
-            _ => {
-                self.sp -= 1;
-                self.pc = self.stack[self.sp] as usize;
-                Ok(())
-            }
-        }
+    fn ret(&mut self) {
+        // TODO underflow
+        self.sp -= 1;
+        self.pc = self.stack[self.sp] as usize;
     }
 
-    fn jp(&mut self, address: u16) -> Result<(), Chip8Error> {
+    fn jp(&mut self, address: u16) {
         self.pc = address as usize;
-        Ok(())
     }
 
-    fn jp_v0(&mut self, address: u16) -> Result<(), Chip8Error> {
+    fn jp_v0(&mut self, address: u16) {
         self.pc = address as usize + (self.v[0] as usize);
-        Ok(())
     }
 
-    fn call(&mut self, address: u16) -> Result<(), Chip8Error> {
-        match self.sp {
-            i if i > 14 => Err(Chip8Error::StackOverflowError),
-            _ => {
-                self.stack[self.sp] = self.pc as u16;
-                self.sp += 1;
-                self.pc = address as usize;
-                Ok(())
-            }
-        }
+    fn call(&mut self, address: u16) {
+        self.stack[self.sp] = self.pc as u16;
+        self.sp += 1;
+        self.pc = address as usize;
     }
 
-    fn se_byte(&mut self, x: usize, byte: u8) -> Result<(), Chip8Error> {
+    fn se_byte(&mut self, x: usize, byte: u8) {
         if self.v[x] == byte {
             self.pc += 2;
         }
-
-        Ok(())
     }
 
-    fn se_reg(&mut self, x: usize, y: usize) -> Result<(), Chip8Error> {
+    fn se_reg(&mut self, x: usize, y: usize) {
         if self.v[x] == self.v[y] {
             self.pc += 2;
         }
-
-        Ok(())
     }
 
-    fn sne_byte(&mut self, x: usize, byte: u8) -> Result<(), Chip8Error> {
+    fn sne_byte(&mut self, x: usize, byte: u8) {
         if self.v[x] != byte {
             self.pc += 2;
         }
-
-        Ok(())
     }
 
-    fn sne_reg(&mut self, x: usize, y: usize) -> Result<(), Chip8Error> {
+    fn sne_reg(&mut self, x: usize, y: usize) {
         if self.v[x] != self.v[y] {
             self.pc += 2;
         }
-
-        Ok(())
     }
 
-    fn ld_byte(&mut self, x: usize, byte: u8) -> Result<(), Chip8Error> {
+    fn ld_byte(&mut self, x: usize, byte: u8) {
         self.v[x] = byte;
-        Ok(())
     }
 
-    fn ld_reg(&mut self, x: usize, y: usize) -> Result<(), Chip8Error> {
+    fn ld_reg(&mut self, x: usize, y: usize) {
         self.v[x] = self.v[y];
-        Ok(())
     }
 
-    fn ld_i(&mut self, addr: u16) -> Result<(), Chip8Error> {
+    fn ld_i(&mut self, addr: u16) {
         self.i = addr;
-        Ok(())
     }
 
-    fn add_byte(&mut self, x: usize, byte: u8) -> Result<(), Chip8Error> {
+    fn add_byte(&mut self, x: usize, byte: u8) {
         // TODO verify
         let value = self.v[x] as u16;
         self.v[x] = (value + byte as u16) as u8;
-        Ok(())
     }
 
-    fn add_reg(&mut self, x: usize, y: usize) -> Result<(), Chip8Error> {
+    fn add_reg(&mut self, x: usize, y: usize) {
         let sum = (self.v[x] as u16) + (self.v[y] as u16);
         self.v[x] = sum as u8;
 
@@ -188,26 +163,21 @@ impl Chip8 {
         } else {
             self.v[0xF] = 0;
         }
-
-        Ok(())
     }
 
-    fn or(&mut self, x: usize, y: usize) -> Result<(), Chip8Error> {
+    fn or(&mut self, x: usize, y: usize) {
         self.v[x] = self.v[x] | self.v[y];
-        Ok(())
     }
 
-    fn and(&mut self, x: usize, y: usize) -> Result<(), Chip8Error> {
+    fn and(&mut self, x: usize, y: usize) {
         self.v[x] = self.v[x] & self.v[y];
-        Ok(())
     }
 
-    fn xor(&mut self, x: usize, y: usize) -> Result<(), Chip8Error> {
+    fn xor(&mut self, x: usize, y: usize) {
         self.v[x] = self.v[x] ^ self.v[y];
-        Ok(())
     }
 
-    fn sub(&mut self, x: usize, y: usize) -> Result<(), Chip8Error> {
+    fn sub(&mut self, x: usize, y: usize) {
         if self.v[x] > self.v[y] {
             self.v[0xF] = 1;
         } else {
@@ -215,59 +185,50 @@ impl Chip8 {
         }
 
         self.v[x] = ((self.v[x] as i32) - (self.v[y] as i32)) as u8;
-
-        Ok(())
     }
 
-    fn shr(&mut self, _x: usize, _y: usize) -> Result<(), Chip8Error> {
-        Err(Chip8Error::NotImplementedError)
+    fn shr(&mut self, _x: usize, _y: usize) {
+        // TODO implement
     }
 
-    fn shl(&mut self, _x: usize, _y: usize) -> Result<(), Chip8Error> {
-        Err(Chip8Error::NotImplementedError)
+    fn shl(&mut self, _x: usize, _y: usize) {
+        // TODO implement
     }
 
-    fn subn(&mut self, _x: usize, _y: usize) -> Result<(), Chip8Error> {
-        Err(Chip8Error::NotImplementedError)
+    fn subn(&mut self, _x: usize, _y: usize) {
+        // TODO implement
     }
 
-    fn rnd(&mut self, x: usize, byte: u8) -> Result<(), Chip8Error> {
+    fn rnd(&mut self, x: usize, byte: u8) {
         let r = rand::random::<u8>();
         self.v[x] = r & byte;
-        Ok(())
     }
 
-    fn ld_dt_v(&mut self, x: usize) -> Result<(), Chip8Error> {
+    fn ld_dt_v(&mut self, x: usize) {
         self.dt = self.v[x];
-        Ok(())
     }
 
-    fn ld_v_dt(&mut self, x: usize) -> Result<(), Chip8Error> {
+    fn ld_v_dt(&mut self, x: usize) {
         self.v[x] = self.dt;
-        Ok(())
     }
 
-    fn ld_key(&mut self, _x: usize) -> Result<(), Chip8Error> {
-        // TODO keypress
-        Ok(())
+    fn ld_key(&mut self, _x: usize) {
+        // TODO implement
     }
 
-    fn ld_st_v(&mut self, x: usize) -> Result<(), Chip8Error> {
+    fn ld_st_v(&mut self, x: usize) {
         self.st = self.v[x];
-        Ok(())
     }
 
-    fn skp(&mut self, _x: usize) -> Result<(), Chip8Error> {
-        // TODO keypress
-        Ok(())
+    fn skp(&mut self, _x: usize) {
+        // TODO implement
     }
 
-    fn sknp(&mut self, _x: usize) -> Result<(), Chip8Error> {
-        // TODO keypress
-        Ok(())
+    fn sknp(&mut self, _x: usize) {
+        // TODO implement
     }
 
-    fn drw(&mut self, vx: usize, vy: usize, n: u8) -> Result<(), Chip8Error> {
+    fn drw(&mut self, vx: usize, vy: usize, n: u8) {
         let mut carry: u8 = 0;
         let x = self.v[vx];
         let y = self.v[vy];
@@ -302,48 +263,39 @@ impl Chip8 {
             0 => 0 as u8,
             _ => 1 as u8,
         };
-
-        Ok(())
     }
 
-    fn add_i(&mut self, x: usize) -> Result<(), Chip8Error> {
+    fn add_i(&mut self, x: usize) {
         self.i += self.v[x] as u16;
-        Ok(())
     }
 
-    fn fnt(&mut self, _x: usize) -> Result<(), Chip8Error> {
-        Err(Chip8Error::NotImplementedError)
+    fn fnt(&mut self, _x: usize) {
+        // TODO implement
     }
 
-    fn bcd(&mut self, x: usize) -> Result<(), Chip8Error> {
+    fn bcd(&mut self, x: usize) {
         let value = self.v[x];
         let addr = self.i as usize;
 
         self.memory[addr] = ((value as u16 % 1000) / 100) as u8;
         self.memory[addr + 1] = (value % 100) / 10;
         self.memory[addr + 2] = value % 10;
-
-        Ok(())
     }
 
-    fn save(&mut self, x: usize) -> Result<(), Chip8Error> {
+    fn save(&mut self, x: usize) {
         let addr = self.i as usize;
 
         for i in 0..x {
             self.memory[addr + i] = self.v[i];
         }
-
-        Ok(())
     }
 
-    fn restore(&mut self, x: usize) -> Result<(), Chip8Error> {
+    fn restore(&mut self, x: usize) {
         let addr = self.i as usize;
 
         for i in 0..x {
             self.v[i] = self.memory[addr + i];
         }
-
-        Ok(())
     }
 
     pub fn step(&mut self) -> Result<(), Chip8Error> {
@@ -357,7 +309,7 @@ impl Chip8 {
             self.st -= 1;
         }
 
-        let instruction: u16 = self.fetch(pc)?;
+        let instruction: u16 = self.fetch(pc);
         self.pc += 2;
 
         let result = self._execute(instruction);
@@ -399,53 +351,105 @@ impl Chip8 {
         let y: usize = (instruction >> 4 & 0xF) as usize;
 
         match instruction {
-            0x00E0 => self.cls(),
-            0x00EE => self.ret(),
-            i if i & 0xF000 == 0x1000 => self.jp(addr),
-            i if i & 0xF000 == 0x2000 => self.call(addr),
-            i if i & 0xF000 == 0x3000 => self.se_byte(x, byte),
-            i if i & 0xF000 == 0x4000 => self.sne_byte(x, byte),
-            i if i & 0xF000 == 0x5000 => self.se_reg(x, y),
-            i if i & 0xF000 == 0x6000 => self.ld_byte(x, byte),
-            i if i & 0xF000 == 0x7000 => self.add_byte(x, byte),
-            i if i & 0xF00F == 0x8000 => self.ld_reg(x, y),
-            i if i & 0xF00F == 0x8001 => self.or(x, y),
-            i if i & 0xF00F == 0x8002 => self.and(x, y),
-            i if i & 0xF00F == 0x8003 => self.xor(x, y),
-            i if i & 0xF00F == 0x8004 => self.add_reg(x, y),
-            i if i & 0xF00F == 0x8005 => self.sub(x, y),
-            i if i & 0xF00F == 0x8006 => self.shr(x, y),
-            i if i & 0xF00F == 0x8007 => self.subn(x, y),
-            i if i & 0xF00F == 0x800E => self.shl(x, y),
-            i if i & 0xF00F == 0x9000 => self.sne_reg(x, y),
-            i if i & 0xF000 == 0xA000 => self.ld_i(addr),
-            i if i & 0xF000 == 0xB000 => self.jp_v0(addr),
-            i if i & 0xF000 == 0xC000 => self.rnd(x, byte),
-            i if i & 0xF000 == 0xD000 => self.drw(x, y, nibble),
-            i if i & 0xF0FF == 0xE09E => self.skp(x),
-            i if i & 0xF0FF == 0xE0A1 => self.sknp(x),
-            i if i & 0xF0FF == 0xF007 => self.ld_v_dt(x),
-            i if i & 0xF0FF == 0xF00A => self.ld_key(x),
-            i if i & 0xF0FF == 0xF015 => self.ld_dt_v(x),
-            i if i & 0xF0FF == 0xF018 => self.ld_st_v(x),
-            i if i & 0xF0FF == 0xF01E => self.add_i(x),
-            i if i & 0xF0FF == 0xF029 => self.fnt(x),
-            i if i & 0xF0FF == 0xF033 => self.bcd(x),
-            i if i & 0xF0FF == 0xF055 => self.save(x),
-            i if i & 0xF0FF == 0xF065 => self.restore(x),
+            0x00E0 => Ok(self.cls()),
+            0x00EE => Ok(self.ret()),
+            i if i & 0xF000 == 0x1000 => Ok(self.jp(addr)),
+            i if i & 0xF000 == 0x2000 => Ok(self.call(addr)),
+            i if i & 0xF000 == 0x3000 => Ok(self.se_byte(x, byte)),
+            i if i & 0xF000 == 0x4000 => Ok(self.sne_byte(x, byte)),
+            i if i & 0xF000 == 0x5000 => Ok(self.se_reg(x, y)),
+            i if i & 0xF000 == 0x6000 => Ok(self.ld_byte(x, byte)),
+            i if i & 0xF000 == 0x7000 => Ok(self.add_byte(x, byte)),
+            i if i & 0xF00F == 0x8000 => Ok(self.ld_reg(x, y)),
+            i if i & 0xF00F == 0x8001 => Ok(self.or(x, y)),
+            i if i & 0xF00F == 0x8002 => Ok(self.and(x, y)),
+            i if i & 0xF00F == 0x8003 => Ok(self.xor(x, y)),
+            i if i & 0xF00F == 0x8004 => Ok(self.add_reg(x, y)),
+            i if i & 0xF00F == 0x8005 => Ok(self.sub(x, y)),
+            i if i & 0xF00F == 0x8006 => Ok(self.shr(x, y)),
+            i if i & 0xF00F == 0x8007 => Ok(self.subn(x, y)),
+            i if i & 0xF00F == 0x800E => Ok(self.shl(x, y)),
+            i if i & 0xF00F == 0x9000 => Ok(self.sne_reg(x, y)),
+            i if i & 0xF000 == 0xA000 => Ok(self.ld_i(addr)),
+            i if i & 0xF000 == 0xB000 => Ok(self.jp_v0(addr)),
+            i if i & 0xF000 == 0xC000 => Ok(self.rnd(x, byte)),
+            i if i & 0xF000 == 0xD000 => Ok(self.drw(x, y, nibble)),
+            i if i & 0xF0FF == 0xE09E => Ok(self.skp(x)),
+            i if i & 0xF0FF == 0xE0A1 => Ok(self.sknp(x)),
+            i if i & 0xF0FF == 0xF007 => Ok(self.ld_v_dt(x)),
+            i if i & 0xF0FF == 0xF00A => Ok(self.ld_key(x)),
+            i if i & 0xF0FF == 0xF015 => Ok(self.ld_dt_v(x)),
+            i if i & 0xF0FF == 0xF018 => Ok(self.ld_st_v(x)),
+            i if i & 0xF0FF == 0xF01E => Ok(self.add_i(x)),
+            i if i & 0xF0FF == 0xF029 => Ok(self.fnt(x)),
+            i if i & 0xF0FF == 0xF033 => Ok(self.bcd(x)),
+            i if i & 0xF0FF == 0xF055 => Ok(self.save(x)),
+            i if i & 0xF0FF == 0xF065 => Ok(self.restore(x)),
             _ => Err(Chip8Error::UnknownInstructionError),
         }
     }
 
-    pub fn fetch(&mut self, address: usize) -> Result<u16, Chip8Error> {
-        match address {
-            i if i >= MEMORY_SIZE - 1 => Err(Chip8Error::AddressOutOfRangeError),
-            //i if i % 2 > 0 => Err(Chip8Error::InstructionOffsetError),
-            _ => {
-                let result =
-                    Ok((self.memory[address] as u16) << 8 | (self.memory[address + 1] as u16));
-                result
-            }
+    pub fn fetch(&self, address: usize) -> u16 {
+        // TODO out of range
+        let result = (self.memory[address] as u16) << 8 | (self.memory[address + 1] as u16);
+        result
+    }
+
+    pub fn disassemble2(address: usize, memory: [u8; MAX_PROGRAM_SIZE]) -> DecodedInstruction {
+        let instruction = (memory[address] as u16) << 8 | (memory[address + 1] as u16);
+        let addr = instruction & 0xFFF;
+        let byte: u8 = (instruction & 0xFF) as u8;
+        let nibble = (instruction & 0xF) as u8;
+        let x: u8 = (instruction >> 8 & 0xF) as u8;
+        let y: u8 = (instruction >> 4 & 0xF) as u8;
+
+        let (op, params) = match instruction {
+            0x00E0 => ("CLS", String::new()),
+            0x00EE => ("RET", String::new()),
+            i if i & 0xF000 == 0x1000 => ("JP", format!("#{:04X}", addr)),
+            i if i & 0xF000 == 0x2000 => ("CALL", format!("#{:04X}", addr)),
+            i if i & 0xF000 == 0x1000 => ("JP", format!("#{:04X}", addr)),
+            i if i & 0xF000 == 0x2000 => ("CALL", format!("#{:04X}", addr)),
+            i if i & 0xF000 == 0x3000 => ("SE", format!("V{:X}, {:02X}", x, byte)),
+            i if i & 0xF000 == 0x4000 => ("SNE", format!("V{:X}, {:02X}", x, byte)),
+            i if i & 0xF000 == 0x5000 => ("SE", format!("V{:X}, V{}", x, y)),
+            i if i & 0xF000 == 0x6000 => ("LD", format!("V{:X}, {:02X}", x, byte)),
+            i if i & 0xF000 == 0x7000 => ("ADD", format!("V{:X}, {:02X}", x, byte)),
+            i if i & 0xF00F == 0x8000 => ("LD", format!("V{:X}, V{:X}", x, y)),
+            i if i & 0xF00F == 0x8001 => ("OR", format!("V{:X}, V{:X}", x, y)),
+            i if i & 0xF00F == 0x8002 => ("AND", format!("V{:X}, V{:X}", x, y)),
+            /*
+            i if i & 0xF00F == 0x8003 => format!("XOR    V{:X}, V{:X}", x, y),
+            i if i & 0xF00F == 0x8004 => format!("ADD    V{:X}, V{:X}", x, y),
+            i if i & 0xF00F == 0x8005 => format!("SUB    V{:X}, V{:X}", x, y),
+            i if i & 0xF00F == 0x8006 => format!("SHR    V{:X}, V{:X}", x, y),
+            i if i & 0xF00F == 0x8007 => format!("SUBN   V{:X}, V{:X}", x, y),
+            i if i & 0xF00F == 0x800E => format!("SHL    V{:X}, V{:X}", x, y),
+            i if i & 0xF00F == 0x9000 => format!("SNE    V{:X}, V{:X}", x, y),
+            i if i & 0xF000 == 0xA000 => format!("LD     I, #{:04X}", addr),
+            i if i & 0xF000 == 0xB000 => format!("JP     V0, #{:04X}", addr),
+            i if i & 0xF000 == 0xC000 => format!("RND    V{:X}, #{:02X}", x, byte),
+            i if i & 0xF000 == 0xD000 => format!("DRW    V{:X}, V{:X}, {}", x, y, nibble),
+            i if i & 0xF0FF == 0xE09E => format!("SKP    V{:X}", x),
+            i if i & 0xF0FF == 0xE0A1 => format!("SKNP   V{:X}", x),
+            i if i & 0xF0FF == 0xF007 => format!("LD     V{:X}, DT", x),
+            i if i & 0xF0FF == 0xF00A => format!("LD     V{:X}, K", x),
+            i if i & 0xF0FF == 0xF015 => format!("LD     DT, V{:X}", x),
+            i if i & 0xF0FF == 0xF018 => format!("LD     ST, V{:X}", x),
+            i if i & 0xF0FF == 0xF01E => format!("ADD    I, V{:X}", x),
+            i if i & 0xF0FF == 0xF029 => format!("FNT    I, V{:X}", x),
+            i if i & 0xF0FF == 0xF033 => format!("BCD    I, V{:X}", x),
+            i if i & 0xF0FF == 0xF055 => format!("LD     [I], V0-V{:X}", x),
+            i if i & 0xF0FF == 0xF065 => format!("LD     V0-V{:X}, [I]", x),
+            */
+            _ => ("???", String::new()),
+        };
+
+        DecodedInstruction {
+            address: address,
+            instruction: instruction,
+            operation: String::from(op),
+            params: params,
         }
     }
 
@@ -475,52 +479,9 @@ impl Chip8 {
     }
 }
 
-pub fn disassemble(instruction: u16) -> Result<String, Chip8Error> {
-    let addr = instruction & 0xFFF;
-    let byte: u8 = (instruction & 0xFF) as u8;
-    let nibble = (instruction & 0xF) as u8;
-    let x: u8 = (instruction >> 8 & 0xF) as u8;
-    let y: u8 = (instruction >> 4 & 0xF) as u8;
-
-    let mut string = String::new();
-
-    string.push_str(&match instruction {
-        0x00E0 => "CLS".to_owned(),
-        0x00EE => "RET".to_owned(),
-        i if i & 0xF000 == 0x1000 => format!("JP     #{:04X}", addr),
-        i if i & 0xF000 == 0x2000 => format!("CALL   #{:04X}", addr),
-        i if i & 0xF000 == 0x3000 => format!("SE     V{:X}, {:02X}", x, byte),
-        i if i & 0xF000 == 0x4000 => format!("SNE    V{:X}, {:02X}", x, byte),
-        i if i & 0xF000 == 0x5000 => format!("SE     V{:X}, V{}", x, y),
-        i if i & 0xF000 == 0x6000 => format!("LD     V{:X}, {:02X}", x, byte),
-        i if i & 0xF000 == 0x7000 => format!("ADD    V{:X}, {:02X}", x, byte),
-        i if i & 0xF00F == 0x8000 => format!("LD     V{:X}, V{:X}", x, y),
-        i if i & 0xF00F == 0x8001 => format!("OR     V{:X}, V{:X}", x, y),
-        i if i & 0xF00F == 0x8002 => format!("AND    V{:X}, V{:X}", x, y),
-        i if i & 0xF00F == 0x8003 => format!("XOR    V{:X}, V{:X}", x, y),
-        i if i & 0xF00F == 0x8004 => format!("ADD    V{:X}, V{:X}", x, y),
-        i if i & 0xF00F == 0x8005 => format!("SUB    V{:X}, V{:X}", x, y),
-        i if i & 0xF00F == 0x8006 => format!("SHR    V{:X}, V{:X}", x, y),
-        i if i & 0xF00F == 0x8007 => format!("SUBN   V{:X}, V{:X}", x, y),
-        i if i & 0xF00F == 0x800E => format!("SHL    V{:X}, V{:X}", x, y),
-        i if i & 0xF00F == 0x9000 => format!("SNE    V{:X}, V{:X}", x, y),
-        i if i & 0xF000 == 0xA000 => format!("LD     I, #{:04X}", addr),
-        i if i & 0xF000 == 0xB000 => format!("JP     V0, #{:04X}", addr),
-        i if i & 0xF000 == 0xC000 => format!("RND    V{:X}, #{:02X}", x, byte),
-        i if i & 0xF000 == 0xD000 => format!("DRW    V{:X}, V{:X}, {}", x, y, nibble),
-        i if i & 0xF0FF == 0xE09E => format!("SKP    V{:X}", x),
-        i if i & 0xF0FF == 0xE0A1 => format!("SKNP   V{:X}", x),
-        i if i & 0xF0FF == 0xF007 => format!("LD     V{:X}, DT", x),
-        i if i & 0xF0FF == 0xF00A => format!("LD     V{:X}, K", x),
-        i if i & 0xF0FF == 0xF015 => format!("LD     DT, V{:X}", x),
-        i if i & 0xF0FF == 0xF018 => format!("LD     ST, V{:X}", x),
-        i if i & 0xF0FF == 0xF01E => format!("ADD    I, V{:X}", x),
-        i if i & 0xF0FF == 0xF029 => format!("FNT    I, V{:X}", x),
-        i if i & 0xF0FF == 0xF033 => format!("BCD    I, V{:X}", x),
-        i if i & 0xF0FF == 0xF055 => format!("LD     [I], V0-V{:X}", x),
-        i if i & 0xF0FF == 0xF065 => format!("LD     V0-V{:X}, [I]", x),
-        _ => return Err(Chip8Error::UnknownInstructionError),
-    });
-
-    Ok(string)
+pub struct DecodedInstruction {
+    pub address: usize,
+    pub instruction: u16,
+    pub operation: String,
+    pub params: String,
 }

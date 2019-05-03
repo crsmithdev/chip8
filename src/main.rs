@@ -1,12 +1,17 @@
 extern crate lib;
 extern crate sdl2;
+extern crate sdl2_sys;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate crossbeam_channel;
 
 use lib::cpu::Chip8;
-use lib::display::{Context, Display};
+use lib::display::{Context, Context2, Display, Display2};
 use lib::rom;
+use lib::timer::Timer;
 use sdl2::pixels::PixelFormatEnum;
+use sdl2_sys::SDL_WindowFlags;
 use std::cmp::{max, min};
 use std::path::Path;
 use std::thread;
@@ -14,10 +19,12 @@ use std::time::{Duration, SystemTime};
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 const FONT_SIZE: u16 = 28;
 const WINDOW_WIDTH: u32 = 1024;
-const WINDOW_HEIGHT: u32 = 610;
+const WINDOW_HEIGHT: u32 = 576;
 
 lazy_static! {
     static ref FONT_PATH: &'static Path = Path::new("../../resources/SourceCodePro-Semibold.ttf");
@@ -27,6 +34,14 @@ fn main() {
     let sdl_context = sdl2::init().unwrap();
     let ttf_context = sdl2::ttf::init().unwrap();
     let mut event_pump = sdl_context.event_pump().unwrap();
+
+    /*
+    let c2 = Context2 {
+        sdl: Rc::new(RefCell::new(sdl_context)),
+        ttf: Rc::new(RefCell::new(ttf_context)),
+    };
+    let d2 = Display2::new(&c2);
+    */
 
     let window = sdl_context
         .video()
@@ -59,6 +74,8 @@ fn main() {
     let mut paused = false;
     let mut step = false;
     let mut last_time = SystemTime::now();
+    let r_timer = Timer::new();
+    let r_recv = r_timer.receiver;
 
     'running: loop {
         for event in event_pump.poll_iter() {
@@ -101,7 +118,24 @@ fn main() {
 
         let state = cpu.state();
         display.redraw(&mut context, &state);
+        let flags = context.canvas.window().window_flags() as u32;
+        let focused = SDL_WindowFlags::SDL_WINDOW_INPUT_FOCUS as u32;
+        let has_focus = (flags & focused) == focused;
+        //ßprintln!("{:#016b} {:#016b} {}", flags, focused, has_focus);
+        let mut duration = 16;
+        if !has_focus || paused {
+            duration = 50;
+        }
 
-        thread::sleep(Duration::from_millis(5));
+        thread::sleep(Duration::from_millis(duration));
+        /*
+        select! {
+            recv(r_recv) -> _ => {
+                let state = cpu.state();
+                display.redraw(&mut context, &state)
+            },
+            default => ()
+        }
+        */
     }
 }
