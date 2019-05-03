@@ -4,7 +4,6 @@ use std::error::Error;
 use std::fmt;
 use std::string::String;
 
-const MEMORY_SIZE: usize = 0x1000;
 const PROGRAM_START: usize = 0x200;
 pub const MAX_PROGRAM_SIZE: usize = 0xE00;
 const VIDEO_SIZE: usize = 256;
