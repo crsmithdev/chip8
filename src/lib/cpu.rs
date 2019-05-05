@@ -398,7 +398,7 @@ impl Chip8 {
         let instruction = (memory[address] as u16) << 8 | (memory[address + 1] as u16);
         let addr = instruction & 0xFFF;
         let byte: u8 = (instruction & 0xFF) as u8;
-        let nibble = (instruction & 0xF) as u8;
+        //let nibble = (instruction & 0xF) as u8;
         let x: u8 = (instruction >> 8 & 0xF) as u8;
         let y: u8 = (instruction >> 4 & 0xF) as u8;
 

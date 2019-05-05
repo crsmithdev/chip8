@@ -1,23 +1,29 @@
 extern crate lib;
 extern crate sdl2;
 extern crate sdl2_sys;
-
+#[macro_use]
+extern crate lazy_static;
 use lib::cpu::Chip8;
-use lib::display::Display;
+use lib::display::{Display, Renderable};
 use lib::rom;
-use sdl2_sys::SDL_WindowFlags;
+//use sdl2_sys::SDL_WindowFlags;
 use std::cmp::{max, min};
 use std::thread;
 use std::time::{Duration, SystemTime};
 
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use std::path::Path;
+
+lazy_static! {
+    static ref FONT_PATH: &'static Path = Path::new("../../resources/SourceCodePro-Semibold.ttf");
+}
 
 fn main() {
     let sdl_context = sdl2::init().unwrap();
     let ttf_context = sdl2::ttf::init().unwrap();
     let mut event_pump = sdl_context.event_pump().unwrap();
-    let mut display = Display::new(sdl_context, &ttf_context);
+    let mut display = Display::new(&sdl_context, &ttf_context);
 
     let mut cpu = Chip8::new();
     cpu.load_rom(&rom::BOOT).unwrap();
@@ -67,14 +73,16 @@ fn main() {
         }
 
         let state = cpu.state();
-        display.redraw(&state);
+        display.render(&state);
+        let duration = 16;
+        /*
         let flags = display.canvas.window().window_flags() as u32;
         let focused = SDL_WindowFlags::SDL_WINDOW_INPUT_FOCUS as u32;
         let has_focus = (flags & focused) == focused;
-        let mut duration = 16;
         if !has_focus || paused {
             duration = 50;
         }
+        */
 
         thread::sleep(Duration::from_millis(duration));
     }
