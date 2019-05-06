@@ -7,11 +7,13 @@ use std::path::Path;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
+use sdl2::render::{Texture, TextureCreator};
 use sdl2::ttf::Font;
 use sdl2::ttf::Sdl2TtfContext;
-use sdl2::video::Window;
+use sdl2::video::{Window, WindowContext};
 use sdl2::Sdl;
 use std::cell::RefCell;
+use std::ops::DerefMut;
 use std::rc::Rc;
 
 use cpu::Chip8State;
@@ -19,9 +21,7 @@ const WINDOW_WIDTH: u32 = 1024;
 const WINDOW_HEIGHT: u32 = 576;
 const FONT_SIZE: u16 = 28;
 
-type CanvasRef = Rc<RefCell<Canvas<Window>>>;
-type FontRef<'a, 'b> = Rc<Font<'a, 'b>>;
-type WriterRef<'a, 'b> = Rc<TextWriter<'a, 'b>>;
+type ContextRef<'a> = Rc<Context<'a>>;
 
 lazy_static! {
     static ref FONT_PATH: &'static Path = Path::new("../../resources/SourceCodePro-Semibold.ttf");
@@ -40,50 +40,23 @@ lazy_static! {
     static ref REGISTER_FRAME: Rect = Rect::new(740, 815, 790, 317);
 }
 
-pub trait Renderable {
-    type State;
-
-    fn render(&mut self, state: &Self::State);
+pub struct Screen<'a> {
+    context: ContextRef<'a>,
 }
 
-pub struct TextWriter<'a, 'b> {
-    canvas: CanvasRef,
-    font: FontRef<'a, 'b>,
-}
-
-impl<'a, 'b> TextWriter<'a, 'b> {
-    fn write(&self, text: &str, x: i32, y: i32, color: Color) {
-        let mut canvas = self.canvas.borrow_mut();
-        let surface = self.font.render(text).blended(color).unwrap();
-        let texture_creator = canvas.texture_creator();
-        let texture = texture_creator
-            .create_texture_from_surface(&surface)
-            .unwrap();
-        let target = Rect::new(x, y, surface.width(), surface.height());
-
-        canvas.copy(&texture, None, Some(target)).unwrap();
-    }
-
-    fn spacing(&self) -> i32 {
-        self.font.recommended_line_spacing()
-    }
-}
-
-pub struct Screen {
-    canvas: CanvasRef,
-}
-
-impl Renderable for Screen {
+impl<'a> Renderable for Screen<'a> {
     type State = Chip8State;
 
     fn render(&mut self, state: &Chip8State) {
         let frame = *SCREEN_FRAME;
-        {
-            let mut canvas = self.canvas.borrow_mut();
-            canvas.set_draw_color(*PANEL_COLOR);
-            canvas.fill_rect(frame).unwrap();
-        }
-        let mut canvas = self.canvas.borrow_mut();
+        //let ctx = self.context;//.borrow_mut();
+        let mut canvas = self.context.canvas.borrow_mut();
+        //{
+        //let mut canvas = self.canvas.borrow_mut();
+        canvas.set_draw_color(*PANEL_COLOR);
+        canvas.fill_rect(frame).unwrap();
+        //}
+        //let mut canvas = self.canvas.borrow_mut();
         let texture_creator = canvas.texture_creator();
         let mut screen = texture_creator
             .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
@@ -118,22 +91,22 @@ impl Renderable for Screen {
     }
 }
 
-pub struct Instructions<'a, 'b> {
+pub struct Instructions<'a> {
     address: usize,
-    canvas: CanvasRef,
-    writer: WriterRef<'a, 'b>,
+    context: ContextRef<'a>,
 }
 
-impl<'a, 'b> Renderable for Instructions<'a, 'b> {
+impl<'a> Renderable for Instructions<'a> {
     type State = Chip8State;
 
     fn render(&mut self, state: &Chip8State) {
         let frame = *INSTRUCTION_FRAME;
-        {
-            let mut canvas = self.canvas.borrow_mut();
-            canvas.set_draw_color(*PANEL_COLOR);
-            canvas.fill_rect(frame).unwrap();
-        }
+        //let ctx = self.context;//.borrow_mut();
+        let mut canvas = self.context.canvas.borrow_mut();
+
+        canvas.set_draw_color(*PANEL_COLOR);
+        canvas.fill_rect(frame).unwrap();
+
         let hihglight_width = frame.width() - 25;
         let x = frame.left() + 15;
         let mut y = frame.top() + 10;
@@ -142,32 +115,56 @@ impl<'a, 'b> Renderable for Instructions<'a, 'b> {
             self.address = state.pc - 4;
         }
 
-        let spacing = ((self.writer.spacing() as f32) * 1.19) as i32;
+        let spacing = ((self.context.font_cache.spacing() as f32) * 1.19) as i32;
         for offset in 0..26 {
             let addr = self.address + offset * 2;
             let highlighted = state.pc == addr;
 
             if highlighted {
-                let mut canvas = self.canvas.borrow_mut();
                 canvas.set_draw_color(*INSTRUCTION_HL_COLOR);
                 canvas
                     .fill_rect(Rect::new(x - 4, y - 3, hihglight_width, spacing as u32))
                     .unwrap();
             }
-
+            let mut c = canvas.deref_mut();
             let result = Chip8::disassemble2(addr, state.memory);
-            let addr_text = format!("{:04X}", result.address);
-            self.writer.write(&addr_text, x, y, *ADDR_COLOR);
+            let mut text = self.context.font_cache.build(
+                &format!("{:04X}", result.address),
+                x,
+                y,
+                *ADDR_COLOR,
+            );
+            self.context.font_cache.copy(text, c);
+
             let b2 = result.instruction as u8;
             let b1 = (result.instruction >> 8) as u8;
             let b1_text = format!("{:02X}", b1);
             let b2_text = format!("{:02X}", b2);
-            self.writer.write(&b1_text, x + 90, y, *INST_COLOR);
-            self.writer.write(&b2_text, x + 130, y, *INST_COLOR);
-            self.writer
-                .write(&result.operation, x + 190, y, *TEXT_COLOR);
+            let text = self
+                .context
+                .font_cache
+                .build(&b1_text, x + 90, y, *INST_COLOR);
+            self.context.font_cache.copy(text, c);
+
+            let text = self
+                .context
+                .font_cache
+                .build(&b2_text, x + 130, y, *INST_COLOR);
+            self.context.font_cache.copy(text, c);
+
+            let text = self
+                .context
+                .font_cache
+                .build(&result.operation, x + 190, y, *TEXT_COLOR);
+            self.context.font_cache.copy(text, c);
+
             if result.params != "" {
-                self.writer.write(&result.params, x + 310, y, *TEXT_COLOR);
+                //self.writer.write(&result.params, x + 310, y, *TEXT_COLOR);
+                let text = self
+                    .context
+                    .font_cache
+                    .build(&result.params, x + 310, y, *TEXT_COLOR);
+                self.context.font_cache.copy(text, c);
             }
 
             y += spacing;
@@ -175,78 +172,106 @@ impl<'a, 'b> Renderable for Instructions<'a, 'b> {
     }
 }
 
-pub struct Registers<'a, 'b> {
-    canvas: CanvasRef,
-    writer: WriterRef<'a, 'b>,
+pub struct Registers<'a> {
+    context: ContextRef<'a>,
 }
 
-impl<'a, 'b> Renderable for Registers<'a, 'b> {
+impl<'a> Renderable for Registers<'a> {
     type State = Chip8State;
 
     fn render(&mut self, state: &Chip8State) {
         let frame = *REGISTER_FRAME;
+        //let context = self.context;//.borrow_mut();
+        let mut canvas = self.context.canvas.borrow_mut();
         {
-            let mut canvas = self.canvas.borrow_mut();
             canvas.set_draw_color(*PANEL_COLOR);
             canvas.fill_rect(frame).unwrap();
         }
 
-        let spacing = ((self.writer.spacing() as f32) * 1.2) as i32;
+        let spacing = ((self.context.font_cache.spacing() as f32) * 1.2) as i32;
         let mut x = frame.left() + 15;
-        let mut y = frame.top() + 10;
 
+        let c = canvas.deref_mut();
         for col in 0..4 {
+            let mut y = frame.top() + 10;
             for row in 0..4 {
                 let i = col * 4 + row;
                 let v = state.v[i];
-                self.writer.write(&format!("V{:X}", i), x, y, *TEXT_COLOR);
-                self.writer
-                    .write(&format!("{:02X}", v), x + 60, y, *ADDR_COLOR);
-                self.writer
-                    .write(&format!("({})", v), x + 100, y, *INST_COLOR);
+                let mut text =
+                    self.context
+                        .font_cache
+                        .build(&format!("V{:X}", i), x, y, *TEXT_COLOR);
+                self.context.font_cache.copy(text, c);
+
+                let text =
+                    self.context
+                        .font_cache
+                        .build(&format!("{:02X}", v), x + 60, y, *ADDR_COLOR);
+                self.context.font_cache.copy(text, c);
+
+                let text =
+                    self.context
+                        .font_cache
+                        .build(&format!("({})", v), x + 100, y, *INST_COLOR);
+                self.context.font_cache.copy(text, c);
                 y += spacing;
             }
             x += 200;
         }
 
         x = frame.left() + 15;
-        y = frame.top() + 200;
+        let mut y = frame.top() + 200;
 
-        let pc_str = &format!("PC {:04X}", state.pc);
-        self.writer.write(pc_str, x, y, *TEXT_COLOR);
+        let mut text =
+            self.context
+                .font_cache
+                .build(&format!("PC {:04X}", state.pc), x, y, *TEXT_COLOR);
+        self.context.font_cache.copy(text, c);
         x += 200;
 
-        let sp_str = &format!("S {}", state.sp);
-        self.writer.write(sp_str, x, y, *TEXT_COLOR);
+        text = self
+            .context
+            .font_cache
+            .build(&format!("S {}", state.sp), x, y, *TEXT_COLOR);
+        self.context.font_cache.copy(text, c);
         x += 200;
 
-        let dt_str = &format!("DT {:04X}", state.dt);
-        self.writer.write(dt_str, x, y, *TEXT_COLOR);
+        text = self
+            .context
+            .font_cache
+            .build(&format!("DT {:04X}", state.dt), x, y, *TEXT_COLOR);
+        self.context.font_cache.copy(text, c);
         x += 200;
 
-        let st_str = &format!("ST {:04X}", state.st);
-        self.writer.write(st_str, x, y, *TEXT_COLOR);
+        text = self
+            .context
+            .font_cache
+            .build(&format!("ST {:04X}", state.st), x, y, *TEXT_COLOR);
+        self.context.font_cache.copy(text, c);
 
         x = frame.left() + 15;
         y += 50;
 
-        let i_str = &format!(" I {:04X}", state.i);
-        self.writer.write(i_str, x, y, *TEXT_COLOR);
+        text = self
+            .context
+            .font_cache
+            .build(&format!(" I {:04X}", state.i), x, y, *TEXT_COLOR);
+        self.context.font_cache.copy(text, c);
     }
 }
 
-pub struct Log<'a, 'b> {
-    canvas: CanvasRef,
-    writer: WriterRef<'a, 'b>,
+pub struct Log<'a> {
+    context: ContextRef<'a>,
 }
 
-impl<'a, 'b> Renderable for Log<'a, 'b> {
+impl<'a> Renderable for Log<'a> {
     type State = Chip8State;
 
     fn render(&mut self, _state: &Chip8State) {
         let frame = *LOG_FRAME;
+        //let mut context = self.context;//.borrow_mut();
+        let mut canvas = self.context.canvas.borrow_mut();
         {
-            let mut canvas = self.canvas.borrow_mut();
             canvas.set_draw_color(*PANEL_COLOR);
             canvas.fill_rect(frame).unwrap();
         }
@@ -254,25 +279,73 @@ impl<'a, 'b> Renderable for Log<'a, 'b> {
         let x = frame.left() + 5;
         let y = frame.top() + 3;
 
-        let text = "This is a log message with data";
-        self.writer.write(&text, x, y, *TEXT_COLOR);
+        let text =
+            self.context
+                .font_cache
+                .build(&"This is a log message with data", x, y, *TEXT_COLOR);
+        let c = canvas.deref_mut();
+        self.context.font_cache.copy(text, c);
     }
 }
 
-pub struct Display<'a, 'b> {
-    pub canvas: CanvasRef,
-    screen: Screen,
-    instructions: Instructions<'a, 'b>,
-    registers: Registers<'a, 'b>,
-    log: Log<'a, 'b>,
+pub trait Renderable {
+    type State;
+
+    fn render(&mut self, state: &Self::State);
 }
 
-impl<'a, 'b> Renderable for Display<'a, 'b> {
+struct Text<'a> {
+    texture: Texture<'a>,
+    rect: Rect,
+}
+
+struct FontCache<'a> {
+    texture_creator: Box<TextureCreator<WindowContext>>,
+    font: Font<'a, 'static>,
+}
+
+impl<'a> FontCache<'a> {
+    fn build(&self, text: &str, x: i32, y: i32, color: Color) -> Text {
+        let surface = self.font.render(text).blended(color).unwrap();
+        let texture = self
+            .texture_creator
+            .create_texture_from_surface(&surface)
+            .unwrap();
+        Text {
+            texture: texture,
+            rect: Rect::new(x, y, surface.width(), surface.height()),
+        }
+    }
+
+    fn copy(&self, text: Text, canvas: &mut Canvas<Window>) {
+        canvas.copy(&text.texture, None, Some(text.rect)).unwrap();
+    }
+
+    fn spacing(&self) -> i32 {
+        self.font.recommended_line_spacing()
+    }
+}
+
+struct Context<'a> {
+    font_cache: FontCache<'a>,
+    canvas: Rc<RefCell<Canvas<Window>>>,
+}
+
+pub struct Display<'a> {
+    context: ContextRef<'a>,
+    screen: Screen<'a>,
+    instructions: Instructions<'a>,
+    registers: Registers<'a>,
+    log: Log<'a>,
+}
+
+impl<'a> Renderable for Display<'a> {
     type State = Chip8State;
 
     fn render(&mut self, state: &Chip8State) {
         {
-            let mut canvas = self.canvas.borrow_mut();
+            //let mut context = self.context;//.borrow_mut();
+            let mut canvas = self.context.canvas.borrow_mut();
             canvas.set_draw_color(*BG_COLOR);
             canvas.clear();
         }
@@ -281,12 +354,17 @@ impl<'a, 'b> Renderable for Display<'a, 'b> {
         self.registers.render(state);
         self.log.render(state);
         self.screen.render(state);
-        self.canvas.borrow_mut().present();
+
+        {
+            //let mut context = self.context;//.borrow_mut();
+            let mut canvas = self.context.canvas.borrow_mut();
+            canvas.present();
+        }
     }
 }
 
-impl<'a, 'b> Display<'a, 'b> {
-    pub fn new(sdl_context: &'a Sdl, ttf_context: &'a Sdl2TtfContext) -> Display<'a, 'b> {
+impl<'a> Display<'a> {
+    pub fn new(sdl_context: &'a Sdl, ttf_context: &'a Sdl2TtfContext) -> Display<'a> {
         let window = sdl_context
             .video()
             .unwrap()
@@ -301,35 +379,36 @@ impl<'a, 'b> Display<'a, 'b> {
             .present_vsync()
             .build()
             .unwrap();
+        let tc = Box::new(canvas.texture_creator());
         let canvas = Rc::new(RefCell::new(canvas));
-        let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
-        let writer = Rc::new(TextWriter {
-            font: Rc::new(font),
+
+        let context = Rc::new(Context {
             canvas: canvas.clone(),
+            font_cache: FontCache {
+                texture_creator: tc,
+                font: ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap(),
+            },
         });
 
         let screen = Screen {
-            canvas: canvas.clone(),
+            context: context.clone(),
         };
 
         let instructions = Instructions {
             address: 512,
-            canvas: canvas.clone(),
-            writer: writer.clone(),
+            context: context.clone(),
         };
 
         let registers = Registers {
-            writer: writer.clone(),
-            canvas: canvas.clone(),
+            context: context.clone(),
         };
 
         let log = Log {
-            canvas: canvas.clone(),
-            writer: writer.clone(),
+            context: context.clone(),
         };
 
         Display {
-            canvas: canvas.clone(),
+            context: context.clone(),
             screen: screen,
             instructions: instructions,
             registers: registers,
