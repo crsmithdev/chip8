@@ -4,7 +4,7 @@ extern crate sdl2_sys;
 #[macro_use]
 extern crate lazy_static;
 use lib::cpu::Chip8;
-use lib::display::{Display, Renderable};
+use lib::display::Display;
 use lib::rom;
 //use sdl2_sys::SDL_WindowFlags;
 use std::cmp::{max, min};
@@ -73,7 +73,7 @@ fn main() {
         }
 
         let state = cpu.state();
-        display.render(&state);
+        display.update(&state);
         let duration = 16;
         /*
         let flags = display.canvas.window().window_flags() as u32;
