@@ -13,29 +13,32 @@ use sdl2::ttf::Sdl2TtfContext;
 use sdl2::video::{Window, WindowContext};
 use sdl2::Sdl;
 use std::cell::RefCell;
-use std::ops::DerefMut;
 use std::rc::Rc;
 
 use cpu::Chip8State;
 const WINDOW_WIDTH: u32 = 1024;
 const WINDOW_HEIGHT: u32 = 576;
 const FONT_SIZE: u16 = 28;
+const FONT_SPACING: i32 = 43;
 
 type ContextRef<'a> = Rc<Context<'a>>;
 
-macro_rules! copy {
-    ($canvas:expr, $texture:expr, $x:expr, $y:expr) => {{
-        let query = $texture.query();
-        let rect = Rect::new($x, $y, query.width, query.height);
-        $canvas.copy(&$texture, None, rect).unwrap();
-    }};
+macro_rules! text1 {
+    ($canvas:ident { $($face:ident @ $x:expr, $y:expr => $text:expr)* } ) => ({
+        $({
+            //let text = format!($($arg)*);
+            let texture = $face(&$text);
+            let query = texture.query();
+            let rect = Rect::new($x, $y, query.width, query.height);
+            $canvas.copy(&texture, None, rect).unwrap();
+        });*
+
+    });
 }
 
 macro_rules! panel {
     ($contents:expr) => {
-        Panel {
-            contents: Box::new($contents),
-        }
+        Panel(Box::new($contents))
     };
 }
 
@@ -110,27 +113,27 @@ impl Renderable for Instructions {
     }
 
     fn render(&mut self, context: ContextRef, state: &Chip8State) {
-        let frame = *INSTRUCTION_FRAME;
         let mut canvas = context.canvas.borrow_mut();
-        let fc = &context.font_cache;
+        let rect = self.rect();
+        let fonts = &context.font_cache;
+        let default = fonts.default();
+        let address = fonts.address();
+        let instruction = fonts.instruction();
 
-        let hihglight_width = frame.width() - 25;
-        let x = frame.left() + 15;
-        let mut y = frame.top() + 10;
-        let mut text = Vec::new();
+        let hl_width = rect.width() - 25;
+        let x = rect.left() + 25;
+        let mut y = rect.top() + 20;
 
         if state.pc < self.address || state.pc - self.address > 30 || state.pc - self.address < 4 {
             self.address = state.pc - 4;
         }
 
-        let spacing = ((fc.spacing() as f32) * 1.19) as i32;
-
-        for offset in 0..26 {
+        for offset in 0..25 {
             let addr = self.address + offset * 2;
             let highlighted = state.pc == addr;
 
             if highlighted {
-                let rect = Rect::new(x - 4, y - 3, hihglight_width, spacing as u32);
+                let rect = Rect::new(x - 4, y - 3, hl_width, FONT_SPACING as u32);
                 canvas.set_draw_color(*INSTRUCTION_HL_COLOR);
                 canvas.fill_rect(rect).unwrap();
             }
@@ -139,21 +142,14 @@ impl Renderable for Instructions {
             let low = result.instruction as u8;
             let high = (result.instruction >> 8) as u8;
 
-            text.push(fc.build(&format!("{:04X}", result.address), x, y, *ADDR_COLOR));
-            text.push(fc.build(&format!("{:02X}", high), x + 90, y, *INST_COLOR));
-            text.push(fc.build(&format!("{:02X}", low), x + 130, y, *INST_COLOR));
-            text.push(fc.build(&result.operation, x + 190, y, *TEXT_COLOR));
-
-            if result.params != "" {
-                text.push(fc.build(&result.params, x + 310, y, *TEXT_COLOR));
-            }
-
-            y += spacing;
-        }
-
-        let c = canvas.deref_mut();
-        for t in text {
-            fc.copy(t, c);
+            text1!(canvas {
+                address @ x, y => format!("{:04X}", result.address)
+                instruction @ x + 90, y => format!("{:02X}", high)
+                instruction @ x + 130, y => format!("{:02X}", low)
+                default @ x + 190, y => result.operation
+                default @ x + 310, y => result.params
+            });
+            y += FONT_SPACING;
         }
     }
 }
@@ -166,44 +162,39 @@ impl Renderable for Registers {
     }
 
     fn render(&mut self, context: ContextRef, state: &Chip8State) {
-        let frame = *REGISTER_FRAME;
         let mut canvas = context.canvas.borrow_mut();
-        let fc = &context.font_cache;
-        let mut text = Vec::new();
+        let rect = self.rect();
+        let fonts = &context.font_cache;
+        let default = fonts.default();
+        let address = fonts.address();
+        let instruction = fonts.instruction();
 
-        let spacing = ((fc.spacing() as f32) * 1.2) as i32;
-        let mut x = frame.left() + 15;
-
+        let mut x = rect.left() + 20;
         for col in 0..4 {
-            let mut y = frame.top() + 10;
+            let mut y = rect.top() + 20;
             for row in 0..4 {
                 let i = col * 4 + row;
                 let v = state.v[i];
-                text.push(fc.build(&format!("V{:X}", i), x, y, *TEXT_COLOR));
-                text.push(fc.build(&format!("{:02X}", v), x + 60, y, *ADDR_COLOR));
-                text.push(fc.build(&format!("({})", v), x + 100, y, *INST_COLOR));
-                y += spacing;
+                text1!(canvas {
+                    default @ x, y => format!("V{:X}", i)
+                    address @ x + 60, y => format!("{:02X}", v)
+                    instruction @ x + 100, y => format!("({})", v)
+                });
+                y += FONT_SPACING;
             }
             x += 200;
         }
 
-        x = frame.left() + 15;
-        let mut y = frame.top() + 200;
+        let x = rect.left();
+        let y = rect.top();
 
-        text.push(fc.build(&format!("PC {:04X}", state.pc), x, y, *TEXT_COLOR));
-        text.push(fc.build(&format!("S {}", state.sp), x + 200, y, *TEXT_COLOR));
-        text.push(fc.build(&format!("DT {:04X}", state.dt), x + 400, y, *TEXT_COLOR));
-        text.push(fc.build(&format!("ST {:04X}", state.st), x + 600, y, *TEXT_COLOR));
-
-        x = frame.left() + 15;
-        y += 50;
-
-        text.push(fc.build(&format!(" I {:04X}", state.i), x, y, *TEXT_COLOR));
-
-        let c = canvas.deref_mut();
-        for t in text {
-            fc.copy(t, c);
-        }
+        text1!(canvas {
+            default @ x + 20, y + 200 => format!("PC {:04X}", state.pc)
+            default @ x + 220, y + 200 => format!("S {}", state.sp)
+            default @ x + 420, y + 200 => format!("DT {:04X}", state.dt)
+            default @ x + 620, y + 200 => format!("ST {:04X}", state.st)
+            default @ x + 20, y + 250 => format!("ST {:04X}", state.st)
+        });
     }
 }
 
@@ -219,8 +210,9 @@ impl Renderable for Log {
         let font = context.font_cache.default();
         let rect = self.rect();
 
-        let text = font(&"This is a log message with data");
-        copy!(canvas, text, rect.left() + 20, rect.top() + 20)
+        text1!(canvas {
+            font @ rect.left() + 20, rect.top() + 20 => "Log message"
+        });
     }
 }
 
@@ -229,31 +221,22 @@ trait Renderable {
     fn rect(&self) -> Rect;
 }
 
-struct Panel {
-    contents: Box<Renderable>,
-}
+struct Panel(Box<Renderable>);
 
 impl Renderable for Panel {
     fn render(&mut self, context: ContextRef, state: &Chip8State) {
-        let rect = self.contents.rect();
-
         {
             let mut canvas = context.canvas.borrow_mut();
             canvas.set_draw_color(*PANEL_COLOR);
-            canvas.fill_rect(rect).unwrap();
+            canvas.fill_rect(self.0.rect()).unwrap();
         }
 
-        self.contents.render(context, state);
+        self.0.render(context, state);
     }
 
     fn rect(&self) -> Rect {
-        self.contents.rect()
+        self.0.rect()
     }
-}
-
-struct Text<'a> {
-    texture: Texture<'a>,
-    rect: Rect,
 }
 
 struct FontWriter<'a> {
@@ -262,40 +245,26 @@ struct FontWriter<'a> {
 }
 
 impl<'a> FontWriter<'a> {
-    fn default(&'a self) -> Box<Fn(&str) -> Texture<'a> + 'a> {
-        //self.build2
-        //move |s| self.build2(s, *TEXT_COLOR)
-        //self.build2(text, *TEXT_COLOR)
-        Box::new(move |s: &str| self.build2(s, *TEXT_COLOR))
+    fn default(&'a self) -> impl Fn(&str) -> Texture<'a> {
+        move |s: &str| self.build_texture(s, *TEXT_COLOR)
     }
 
-    fn build(&self, text: &str, x: i32, y: i32, color: Color) -> Text {
-        let surface = self.font.render(text).blended(color).unwrap();
-        let texture = self
-            .texture_creator
-            .create_texture_from_surface(&surface)
-            .unwrap();
-        Text {
-            texture: texture,
-            rect: Rect::new(x, y, surface.width(), surface.height()),
-        }
+    fn address(&'a self) -> impl Fn(&str) -> Texture<'a> {
+        move |s: &str| self.build_texture(s, *ADDR_COLOR)
     }
 
-    fn build2(&self, text: &str, color: Color) -> Texture {
+    fn instruction(&'a self) -> impl Fn(&str) -> Texture<'a> {
+        move |s: &str| self.build_texture(s, *INST_COLOR)
+    }
+
+    fn build_texture(&self, text: &str, color: Color) -> Texture {
+        let text = if text == "" { " " } else { text };
         let surface = self.font.render(text).blended(color).unwrap();
         let texture = self
             .texture_creator
             .create_texture_from_surface(&surface)
             .unwrap();
         texture
-    }
-
-    fn copy(&self, text: Text, canvas: &mut Canvas<Window>) {
-        canvas.copy(&text.texture, None, text.rect).unwrap();
-    }
-
-    fn spacing(&self) -> i32 {
-        self.font.recommended_line_spacing()
     }
 }
 
