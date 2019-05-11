@@ -3,9 +3,9 @@ name = "chip8"
 version = "0.1.0"
 authors = ["Chris Smith <crsmithdev@gmail.com>"]
 
-[lib]
-name = "lib"
-path = "src/lib/mod.rs"
+[[bin]]
+name = "chip8"
+path = "src/main.rs"
 
 [dependencies]
 rand = "0.6.5"

@@ -1,11 +1,13 @@
-extern crate lib;
+mod cpu;
+mod display;
+mod rom;
+
 extern crate sdl2;
 extern crate sdl2_sys;
 #[macro_use]
 extern crate lazy_static;
-use lib::cpu::Chip8;
-use lib::display::Display;
-use lib::rom;
+use cpu::Chip8;
+use display::Display;
 //use sdl2_sys::SDL_WindowFlags;
 use std::cmp::{max, min};
 use std::thread;

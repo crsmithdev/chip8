@@ -1,5 +1,9 @@
-extern crate lib;
-use lib::cpu;
+//mod cpu;
+//use super::cpu;
+//extern crate lib;
+//use lib::cpu;
+extern crate chip8;
+use chip8::cpu;
 
 #[cfg(test)]
 mod integration_tests {
@@ -31,7 +35,8 @@ mod integration_tests {
         cpu.execute(&[
             0x60FF, // LD v0, FF
             0x8100, // LD v1, v0
-        ]).unwrap();
+        ])
+        .unwrap();
 
         assert_eq!(cpu.v[0], 0xFF);
         assert_eq!(cpu.v[1], 0xFF);
@@ -47,13 +52,15 @@ mod integration_tests {
                 0x6000 + i, // LD v0, i
                 0x6100 + i, // LD v1, i
                 0xD011,     // DRW v0, v1, 1
-            ]).unwrap();
+            ])
+            .unwrap();
 
             assert_eq!(1, get_pixel(&cpu, i, i));
 
             cpu.execute(&[
                 0xD011, // DRW v0, v1, 1
-            ]).unwrap();
+            ])
+            .unwrap();
 
             assert_eq!(0, get_pixel(&cpu, i, i));
         }
@@ -70,7 +77,8 @@ mod integration_tests {
                 0x6000 + i, // LD v0, i
                 0x6100 + i, // LD v1, i
                 0xD012,     // DRW v0, v1, 2
-            ]).unwrap();
+            ])
+            .unwrap();
 
             assert_eq!(1, get_pixel(&cpu, i, i));
             assert_eq!(1, get_pixel(&cpu, i + 1, i));
@@ -79,7 +87,8 @@ mod integration_tests {
 
             cpu.execute(&[
                 0xD012, // DRW v0, v1, 1
-            ]).unwrap();
+            ])
+            .unwrap();
 
             assert_eq!(0, get_pixel(&cpu, i, i));
             assert_eq!(0, get_pixel(&cpu, i + 1, i));
