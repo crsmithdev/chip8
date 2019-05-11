@@ -1,14 +1,19 @@
 mod cpu;
 mod display;
+mod logger;
 mod rom;
 
 extern crate sdl2;
 extern crate sdl2_sys;
 #[macro_use]
 extern crate lazy_static;
+#[macro_use]
+extern crate log;
+extern crate rand;
+use rand::Rng;
+
 use cpu::Chip8;
 use display::Display;
-//use sdl2_sys::SDL_WindowFlags;
 use std::cmp::{max, min};
 use std::thread;
 use std::time::{Duration, SystemTime};
@@ -22,10 +27,11 @@ lazy_static! {
 }
 
 fn main() {
+    let log = logger::init();
     let sdl_context = sdl2::init().unwrap();
     let ttf_context = sdl2::ttf::init().unwrap();
     let mut event_pump = sdl_context.event_pump().unwrap();
-    let mut display = Display::new(&sdl_context, &ttf_context);
+    let mut display = Display::new(&sdl_context, &ttf_context, &log);
 
     let mut cpu = Chip8::new();
     cpu.load_rom(&rom::BOOT).unwrap();
@@ -34,6 +40,9 @@ fn main() {
     let mut paused = false;
     let mut step = false;
     let mut last_time = SystemTime::now();
+
+    info!("Started");
+    //println!("HERE {:?}", log.read());
 
     'running: loop {
         for event in event_pump.poll_iter() {
@@ -52,6 +61,11 @@ fn main() {
                 },
                 _ => (),
             }
+        }
+        let mut rng = rand::thread_rng();
+        let n = rng.gen_range(0, 100);
+        if n == 1 {
+            info!("Message {:04}", rng.gen_range(0, 1000))
         }
 
         let now = SystemTime::now();
@@ -76,15 +90,10 @@ fn main() {
 
         let state = cpu.state();
         display.update(&state);
-        let duration = 16;
-        /*
-        let flags = display.canvas.window().window_flags() as u32;
-        let focused = SDL_WindowFlags::SDL_WINDOW_INPUT_FOCUS as u32;
-        let has_focus = (flags & focused) == focused;
-        if !has_focus || paused {
+        let mut duration = 16;
+        if !display.focused() || paused {
             duration = 50;
         }
-        */
 
         thread::sleep(Duration::from_millis(duration));
     }
