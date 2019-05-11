@@ -115,7 +115,7 @@ impl Renderable for Instructions {
     fn render(&mut self, context: ContextRef, state: &Chip8State) {
         let mut canvas = context.canvas.borrow_mut();
         let rect = self.rect();
-        let fonts = &context.font_cache;
+        let fonts = &context.fonts;
         let default = fonts.default();
         let address = fonts.address();
         let instruction = fonts.instruction();
@@ -164,7 +164,7 @@ impl Renderable for Registers {
     fn render(&mut self, context: ContextRef, state: &Chip8State) {
         let mut canvas = context.canvas.borrow_mut();
         let rect = self.rect();
-        let fonts = &context.font_cache;
+        let fonts = &context.fonts;
         let default = fonts.default();
         let address = fonts.address();
         let instruction = fonts.instruction();
@@ -176,8 +176,8 @@ impl Renderable for Registers {
                 let i = col * 4 + row;
                 let v = state.v[i];
                 text1!(canvas {
-                    default @ x, y => format!("V{:X}", i)
-                    address @ x + 60, y => format!("{:02X}", v)
+                    default     @ x,       y => format!("V{:X}", i)
+                    address     @ x + 60,  y => format!("{:02X}", v)
                     instruction @ x + 100, y => format!("({})", v)
                 });
                 y += FONT_SPACING;
@@ -189,11 +189,11 @@ impl Renderable for Registers {
         let y = rect.top();
 
         text1!(canvas {
-            default @ x + 20, y + 200 => format!("PC {:04X}", state.pc)
+            default @ x + 20,  y + 200 => format!("PC {:04X}", state.pc)
             default @ x + 220, y + 200 => format!("S {}", state.sp)
             default @ x + 420, y + 200 => format!("DT {:04X}", state.dt)
             default @ x + 620, y + 200 => format!("ST {:04X}", state.st)
-            default @ x + 20, y + 250 => format!("ST {:04X}", state.st)
+            default @ x + 20,  y + 250 => format!("ST {:04X}", state.st)
         });
     }
 }
@@ -207,7 +207,7 @@ impl Renderable for Log {
 
     fn render(&mut self, context: ContextRef, _state: &Chip8State) {
         let mut canvas = context.canvas.borrow_mut();
-        let font = context.font_cache.default();
+        let font = context.fonts.default();
         let rect = self.rect();
 
         text1!(canvas {
@@ -239,12 +239,12 @@ impl Renderable for Panel {
     }
 }
 
-struct FontWriter<'a> {
+struct Fonts<'a> {
     texture_creator: Box<TextureCreator<WindowContext>>,
     font: Font<'a, 'static>,
 }
 
-impl<'a> FontWriter<'a> {
+impl<'a> Fonts<'a> {
     fn default(&'a self) -> impl Fn(&str) -> Texture<'a> {
         move |s: &str| self.build_texture(s, *TEXT_COLOR)
     }
@@ -269,7 +269,7 @@ impl<'a> FontWriter<'a> {
 }
 
 struct Context<'a> {
-    font_cache: FontWriter<'a>,
+    fonts: Fonts<'a>,
     canvas: Rc<RefCell<Canvas<Window>>>,
 }
 
@@ -301,7 +301,7 @@ impl<'a> Display<'a> {
 
         let context = Rc::new(Context {
             canvas: canvas.clone(),
-            font_cache: FontWriter {
+            fonts: Fonts {
                 texture_creator: texture_creator,
                 font: font,
             },
