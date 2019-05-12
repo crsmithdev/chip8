@@ -11,7 +11,7 @@ mod integration_tests {
     use super::*;
 
     fn get_pixel(cpu: &cpu::Chip8, x: u16, y: u16) -> u8 {
-        let byte_offset = (y as u32) * cpu.pitch + (x as u32) / cpu.pitch;
+        let byte_offset = (y as u32) * cpu.pitch as u32 + (x as u32) / cpu.pitch as u32;
         let byte = cpu.video[byte_offset as usize];
         let bit_offset = x % 8;
         let bit = (byte & (1 << (7 - bit_offset))) >> (7 - bit_offset);

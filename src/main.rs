@@ -34,7 +34,7 @@ fn main() {
     let mut display = Display::new(&sdl_context, &ttf_context, &log);
 
     let mut cpu = Chip8::new();
-    cpu.load_rom(&rom::BOOT).unwrap();
+    cpu.load_bytes(&rom::BOOT).unwrap();
 
     let mut freq = 500;
     let mut paused = false;

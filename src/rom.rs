@@ -1,3 +1,4 @@
+#[allow(dead_code)]
 pub static ROM: &'static [u64] = &[
     // 0x0000
     0xF0, 0x90, 0x90, 0x90, 0xF0, // 0

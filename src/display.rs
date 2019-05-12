@@ -61,6 +61,12 @@ lazy_static! {
 
 pub struct Screen {}
 
+impl Screen {
+    fn new() -> Screen {
+        Screen {}
+    }
+}
+
 impl Renderable for Screen {
     fn rect(&self) -> Rect {
         *SCREEN_FRAME
@@ -105,6 +111,12 @@ impl Renderable for Screen {
 
 pub struct Instructions {
     address: usize,
+}
+
+impl Instructions {
+    fn new() -> Instructions {
+        Instructions { address: 512 }
+    }
 }
 
 impl Renderable for Instructions {
@@ -157,6 +169,12 @@ impl Renderable for Instructions {
 
 pub struct Registers {}
 
+impl Registers {
+    fn new() -> Registers {
+        Registers {}
+    }
+}
+
 impl Renderable for Registers {
     fn rect(&self) -> Rect {
         *REGISTER_FRAME
@@ -193,7 +211,7 @@ impl Renderable for Registers {
         }
 
         let x = rect.left() + 20;
-        let y = rect.top() + 20;
+        let y = rect.top() + 10;
 
         text1!(canvas {
             default @ x,       y      => "PC"
@@ -214,6 +232,14 @@ impl Renderable for Registers {
 
 pub struct Log {
     messages: VecDeque<String>,
+}
+
+impl Log {
+    fn new() -> Log {
+        Log {
+            messages: VecDeque::new(),
+        }
+    }
 }
 
 impl Renderable for Log {
@@ -347,12 +373,10 @@ impl<'a> Display<'a> {
         });
 
         let panels = vec![
-            panel!(Instructions { address: 512 }),
-            panel!(Screen {}),
-            panel!(Registers {}),
-            panel!(Log {
-                messages: VecDeque::new()
-            }),
+            panel!(Instructions::new()),
+            panel!(Screen::new()),
+            panel!(Registers::new()),
+            panel!(Log::new()),
         ];
 
         Display {
