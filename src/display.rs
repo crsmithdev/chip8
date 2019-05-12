@@ -1,27 +1,22 @@
-extern crate sdl2;
 extern crate sdl2_sys;
 
 use cpu::Chip8;
-use sdl2::pixels::PixelFormatEnum;
-use std::path::Path;
 
 use logger::Logger;
-use sdl2::pixels::Color;
+use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
-use sdl2::render::Canvas;
-use sdl2::render::{Texture, TextureCreator};
-use sdl2::ttf::Font;
-use sdl2::ttf::Sdl2TtfContext;
+use sdl2::render::{Canvas, Texture, TextureCreator};
+use sdl2::ttf::{Font, Sdl2TtfContext};
 use sdl2::video::{Window, WindowContext};
 use sdl2::Sdl;
 use sdl2_sys::SDL_WindowFlags;
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::path::Path;
 use std::rc::Rc;
 
-use cpu::Chip8State;
-const WINDOW_WIDTH: u32 = 1024 * 2;
-const WINDOW_HEIGHT: u32 = 576 * 2;
+const WINDOW_WIDTH: u32 = 1024;
+const WINDOW_HEIGHT: u32 = 576;
 const FONT_SIZE: u16 = 28;
 const FONT_SPACING: i32 = 43;
 const N_MESSAGES: usize = 7;
@@ -71,7 +66,7 @@ impl Renderable for Screen {
         *SCREEN_FRAME
     }
 
-    fn render(&mut self, context: ContextRef, state: &Chip8State) {
+    fn render(&mut self, context: ContextRef, state: &VMState) {
         let mut canvas = context.canvas.borrow_mut();
 
         let texture_creator = canvas.texture_creator();
@@ -81,8 +76,8 @@ impl Renderable for Screen {
 
         screen
             .with_lock(None, |buffer: &mut [u8], _pitch: usize| {
-                for byte_offset in 0..state.video.len() {
-                    let vm_byte = state.video[byte_offset];
+                for byte_offset in 0..state.vm.video.len() {
+                    let vm_byte = state.vm.video[byte_offset];
 
                     for bit_offset in 0..8 {
                         let buf_idx = (byte_offset * 8 * 3) + (bit_offset * 3);
@@ -117,7 +112,7 @@ impl Renderable for Instructions {
         *INSTRUCTION_FRAME
     }
 
-    fn render(&mut self, context: ContextRef, state: &Chip8State) {
+    fn render(&mut self, context: ContextRef, state: &VMState) {
         let mut canvas = context.canvas.borrow_mut();
         let rect = self.rect();
         let fonts = &context.fonts;
@@ -128,14 +123,15 @@ impl Renderable for Instructions {
         let hl_width = rect.width() - 25;
         let x = rect.left() + 25;
         let mut y = rect.top() + 20;
+        let vm = state.vm;
 
-        if state.pc < self.address || state.pc - self.address > 30 || state.pc - self.address < 4 {
-            self.address = state.pc - 4;
+        if vm.pc < self.address || vm.pc - self.address > 30 || vm.pc - self.address < 4 {
+            self.address = vm.pc - 4;
         }
 
         for offset in 0..25 {
             let addr = self.address + offset * 2;
-            let highlighted = state.pc == addr;
+            let highlighted = vm.pc == addr;
 
             if highlighted {
                 let rect = Rect::new(x - 4, y - 3, hl_width, FONT_SPACING as u32);
@@ -143,7 +139,7 @@ impl Renderable for Instructions {
                 canvas.fill_rect(rect).unwrap();
             }
 
-            let result = Chip8::disassemble2(addr, state.memory);
+            let result = Chip8::disassemble2(addr, &vm.memory);
             let low = result.instruction as u8;
             let high = (result.instruction >> 8) as u8;
 
@@ -166,7 +162,7 @@ impl Renderable for Registers {
         *REGISTER_FRAME
     }
 
-    fn render(&mut self, context: ContextRef, state: &Chip8State) {
+    fn render(&mut self, context: ContextRef, state: &VMState) {
         let mut canvas = context.canvas.borrow_mut();
         let rect = self.rect();
         let fonts = &context.fonts;
@@ -174,6 +170,7 @@ impl Renderable for Registers {
         let address = fonts.address();
         let instruction = fonts.instruction();
         let spacing = FONT_SPACING;
+        let vm = state.vm;
 
         let mut x = rect.left() + 20;
         let separator = Rect::new(rect.left() + 20, rect.top() + 110, rect.width() - 40, 5);
@@ -184,7 +181,7 @@ impl Renderable for Registers {
             let mut y = rect.top() + 135;
             for row in 0..4 {
                 let i = col * 4 + row;
-                let v = state.v[i];
+                let v = vm.v[i];
                 text1!(canvas {
                     default     @ x,       y => format!("V{:X}", i)
                     address     @ x + 60,  y => format!("{:02X}", v)
@@ -200,23 +197,22 @@ impl Renderable for Registers {
 
         text1!(canvas {
             default @ x,       y      => "PC"
-            address @ x + 60,  y      => format!("{:04X}", state.pc)
+            address @ x + 60,  y      => format!("{:04X}", vm.pc)
             default @ x + 200, y      => "ST"
-            address @ x + 260, y      => format!("{:02X}", state.st)
+            address @ x + 260, y      => format!("{:02X}", vm.st)
             default @ x + 400, y      => "DT"
-            address @ x + 460, y      => format!("{:02X}", state.dt)
+            address @ x + 460, y      => format!("{:02X}", vm.dt)
             default @ x + 600, y      => "SP"
-            address @ x + 660, y      => format!("{:02X}", state.sp)
+            address @ x + 660, y      => format!("{:02X}", vm.sp)
             default @ x,       y + 40 => "HZ"
-            address @ x + 60,  y + 40 => "TBA"
+            address @ x + 60,  y + 40 => format!("{:04}", state.hz)
             default @ x + 183, y + 40 => "FPS"
-            address @ x + 260, y + 40 => "TBA"
+            address @ x + 260, y + 40 => format!("{:02}", state.fps)
         });
     }
 }
 
 pub struct Log {
-    log: &'static Logger,
     messages: VecDeque<String>,
 }
 
@@ -225,12 +221,12 @@ impl Renderable for Log {
         *LOG_FRAME
     }
 
-    fn render(&mut self, context: ContextRef, _state: &Chip8State) {
+    fn render(&mut self, context: ContextRef, _state: &VMState) {
         let mut canvas = context.canvas.borrow_mut();
         let font = context.fonts.default();
         let rect = self.rect();
-        if self.log.unread() > 0 {
-            let read = self.log.read();
+        if context.log.unread() > 0 {
+            let read = context.log.read();
             self.messages.extend(read);
             while self.messages.len() > N_MESSAGES {
                 self.messages.pop_front();
@@ -248,14 +244,14 @@ impl Renderable for Log {
 }
 
 trait Renderable {
-    fn render(&mut self, context: ContextRef, state: &Chip8State);
+    fn render(&mut self, context: ContextRef, state: &VMState);
     fn rect(&self) -> Rect;
 }
 
 struct Panel(Box<Renderable>);
 
 impl Renderable for Panel {
-    fn render(&mut self, context: ContextRef, state: &Chip8State) {
+    fn render(&mut self, context: ContextRef, state: &VMState) {
         {
             let mut canvas = context.canvas.borrow_mut();
             canvas.set_draw_color(*PANEL_COLOR);
@@ -302,11 +298,18 @@ impl<'a> Fonts<'a> {
 struct Context<'a> {
     fonts: Fonts<'a>,
     canvas: Rc<RefCell<Canvas<Window>>>,
+    log: &'static Logger,
 }
 
 pub struct Display<'a> {
     context: ContextRef<'a>,
     panels: Vec<Panel>,
+}
+
+pub struct VMState<'a> {
+    pub vm: &'a Chip8,
+    pub fps: i32,
+    pub hz: i32,
 }
 
 impl<'a> Display<'a> {
@@ -335,6 +338,7 @@ impl<'a> Display<'a> {
         let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
 
         let context = Rc::new(Context {
+            log: log,
             canvas: canvas.clone(),
             fonts: Fonts {
                 texture_creator: texture_creator,
@@ -347,7 +351,6 @@ impl<'a> Display<'a> {
             panel!(Screen {}),
             panel!(Registers {}),
             panel!(Log {
-                log: log,
                 messages: VecDeque::new()
             }),
         ];
@@ -358,7 +361,7 @@ impl<'a> Display<'a> {
         }
     }
 
-    pub fn update(&mut self, state: &Chip8State) {
+    pub fn update(&mut self, state: &VMState) {
         let context = &self.context;
 
         {

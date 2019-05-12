@@ -7,6 +7,7 @@ use std::string::String;
 const PROGRAM_START: usize = 0x200;
 pub const MAX_PROGRAM_SIZE: usize = 0xE00;
 const VIDEO_SIZE: usize = 256;
+const PITCH: usize = 8;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Chip8Error {
@@ -43,32 +44,17 @@ impl Error for Chip8Error {
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct Chip8State {
+pub struct Chip8 {
     pub video: [u8; VIDEO_SIZE],
     pub memory: [u8; MAX_PROGRAM_SIZE],
     pub v: [u8; 16],
     pub stack: [u16; 16],
-    pub dt: u8,
-    pub st: u8,
-    pub pc: usize,
-    pub i: usize,
-    pub sp: usize,
-}
-
-pub struct Chip8 {
     pub pc: usize,
     pub sp: usize,
-    pub memory: [u8; MAX_PROGRAM_SIZE],
-    pub v: [u8; 16],
-    pub dt: u8,
-    pub st: u8,
     pub i: u16,
-    pub video: [u8; 256],
-    stack: [u16; 16],
-    pub step: u64,
+    pub dt: u8,
+    pub st: u8,
     pub pitch: u32,
-    pub speed: u32,
 }
 
 impl Chip8 {
@@ -78,14 +64,12 @@ impl Chip8 {
             sp: 0,
             memory: [0; MAX_PROGRAM_SIZE],
             stack: [0; 16],
-            video: [0; 256],
+            video: [0; VIDEO_SIZE],
             v: [0; 16],
             i: 512,
             dt: 0,
             st: 0,
-            step: 0,
             pitch: 8,
-            speed: 1000,
         }
     }
 
@@ -239,7 +223,7 @@ impl Chip8 {
         for i in 0..n {
             let x_offset = x >> 3;
             let x_bit = x & 7;
-            let y_offset = ((y + i) as usize) * 8;
+            let y_offset = ((y + i) as usize) * PITCH;
             let mem_addr = self.i + (i as u16);
             let mem_byte = self.memory[mem_addr as usize];
 
@@ -317,33 +301,7 @@ impl Chip8 {
 
         let result = self._execute(instruction);
 
-        self.step += 1;
-
         result
-    }
-
-    pub fn state(&self) -> Chip8State {
-        Chip8State {
-            video: self.video.clone(),
-            memory: self.memory.clone(),
-            v: self.v.clone(),
-            dt: self.dt,
-            st: self.st,
-            pc: self.pc,
-            i: self.i as usize,
-            stack: self.stack.clone(),
-            sp: self.sp,
-        }
-    }
-
-    pub fn execute(&mut self, instructions: &[u16]) -> Result<(), Chip8Error> {
-        for instruction in instructions.iter() {
-            if let Err(err) = self._execute(*instruction) {
-                return Err(err);
-            }
-        }
-
-        Ok(())
     }
 
     fn _execute(&mut self, instruction: u16) -> Result<(), Chip8Error> {
@@ -398,7 +356,17 @@ impl Chip8 {
         result
     }
 
-    pub fn disassemble2(address: usize, memory: [u8; MAX_PROGRAM_SIZE]) -> DecodedInstruction {
+    pub fn execute(&mut self, instructions: &[u16]) -> Result<(), Chip8Error> {
+        for instruction in instructions.iter() {
+            if let Err(err) = self._execute(*instruction) {
+                return Err(err);
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn disassemble2(address: usize, memory: &[u8; MAX_PROGRAM_SIZE]) -> DecodedInstruction {
         let instruction = (memory[address] as u16) << 8 | (memory[address + 1] as u16);
         let addr = instruction & 0xFFF;
         let byte: u8 = (instruction & 0xFF) as u8;
