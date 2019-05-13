@@ -4,13 +4,12 @@ use std::error::Error;
 use std::fmt;
 use std::string::String;
 
-const PROGRAM_START: usize = 0x200;
-const MEMORY_SIZE: usize = 0xFFF; // 4096
-pub const MAX_PROGRAM_SIZE: usize = 0xE00; // 3584 (4096 - 512)
+const PROGRAM_START: usize = 512;
+const MEMORY_SIZE: usize = 4096;
 const VIDEO_SIZE: usize = 256;
+pub const MAX_PROGRAM_SIZE: usize = MEMORY_SIZE - PROGRAM_START;
 const PITCH: usize = 8;
 const STACK_SIZE: usize = 16;
-const START_OFFSET: usize = 512;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Chip8Error {
@@ -414,9 +413,9 @@ impl Chip8 {
             i if i & 0xF000 == 0xA000 => ("LD", format!("I, #{:04X}", addr)),
             i if i & 0xF000 == 0xB000 => ("JD", format!("V0, #{:04X}", addr)),
             i if i & 0xF000 == 0xC000 => ("RND", format!("V{:X}, #{:02X}", x, byte)),
-            i if i & 0xF000 == 0xD000 => ("DRW", format!("DRW    V{:X}, V{:X}, {}", x, y, nibble)),
-            i if i & 0xF0FF == 0xE09E => ("SKP", format!("SKP    V{:X}", x)),
-            i if i & 0xF0FF == 0xE0A1 => ("SKNP", format!("SKNP   V{:X}", x)),
+            i if i & 0xF000 == 0xD000 => ("DRW", format!("V{:X}, V{:X}, {}", x, y, nibble)),
+            i if i & 0xF0FF == 0xE09E => ("SKP", format!("V{:X}", x)),
+            i if i & 0xF0FF == 0xE0A1 => ("SKNP", format!("V{:X}", x)),
             i if i & 0xF0FF == 0xF007 => ("LD", format!("V{:X}, DT", x)),
             i if i & 0xF0FF == 0xF00A => ("LD", format!("V{:X}, K", x)),
             i if i & 0xF0FF == 0xF015 => ("LD", format!("DT, V{:X}", x)),
@@ -447,7 +446,7 @@ impl Chip8 {
         }
 
         for i in 0..bytes.len() {
-            self.memory[i + START_OFFSET] = bytes[i];
+            self.memory[i + PROGRAM_START] = bytes[i];
         }
 
         Ok(bytes.len())
