@@ -1,6 +1,7 @@
 extern crate sdl2_sys;
 
 use cpu::Chip8;
+use vm::VMState;
 
 use logger::Logger;
 use sdl2::pixels::{Color, PixelFormatEnum};
@@ -82,8 +83,8 @@ impl Renderable for Screen {
 
         screen
             .with_lock(None, |buffer: &mut [u8], _pitch: usize| {
-                for byte_offset in 0..state.vm.video.len() {
-                    let vm_byte = state.vm.video[byte_offset];
+                for byte_offset in 0..state.cpu.video.len() {
+                    let vm_byte = state.cpu.video[byte_offset];
 
                     for bit_offset in 0..8 {
                         let buf_idx = (byte_offset * 8 * 3) + (bit_offset * 3);
@@ -135,7 +136,7 @@ impl Renderable for Instructions {
         let hl_width = rect.width() - 25;
         let x = rect.left() + 25;
         let mut y = rect.top() + 20;
-        let vm = state.vm;
+        let vm = &state.cpu;
 
         if vm.pc < self.address || vm.pc - self.address > 30 || vm.pc - self.address < 4 {
             self.address = vm.pc - 4;
@@ -151,12 +152,13 @@ impl Renderable for Instructions {
                 canvas.fill_rect(rect).unwrap();
             }
 
-            let result = Chip8::disassemble2(addr, &vm.memory);
-            let low = result.instruction as u8;
-            let high = (result.instruction >> 8) as u8;
+            let inst = Chip8::fetch(addr as u16, &vm.memory);
+            let result = Chip8::disassemble(inst);
+            let low = inst as u8;
+            let high = (inst >> 8) as u8;
 
             text1!(canvas {
-                address @ x, y => format!("{:04X}", result.address)
+                address @ x, y => format!("{:04X}", addr)
                 instruction @ x + 90, y => format!("{:02X}", high)
                 instruction @ x + 130, y => format!("{:02X}", low)
                 default @ x + 190, y => result.operation
@@ -188,7 +190,7 @@ impl Renderable for Registers {
         let address = fonts.address();
         let instruction = fonts.instruction();
         let spacing = FONT_SPACING;
-        let vm = state.vm;
+        let vm = &state.cpu;
 
         let mut x = rect.left() + 20;
         let separator = Rect::new(rect.left() + 20, rect.top() + 110, rect.width() - 40, 5);
@@ -332,12 +334,6 @@ pub struct Display<'a> {
     panels: Vec<Panel>,
 }
 
-pub struct VMState<'a> {
-    pub vm: &'a Chip8,
-    pub fps: i32,
-    pub hz: i32,
-}
-
 impl<'a> Display<'a> {
     pub fn new(
         sdl_context: &'a Sdl,
@@ -347,7 +343,7 @@ impl<'a> Display<'a> {
         let window = sdl_context
             .video()
             .unwrap()
-            .window("CHIP-8", WINDOW_WIDTH, WINDOW_HEIGHT)
+            .window("CHIP-8", WINDOW_WIDTH * 2, WINDOW_HEIGHT * 2)
             .allow_highdpi()
             .build()
             .unwrap();

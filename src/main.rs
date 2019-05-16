@@ -8,6 +8,7 @@ mod vm;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate nfd;
 extern crate rand;
 extern crate sdl2;
 extern crate sdl2_sys;

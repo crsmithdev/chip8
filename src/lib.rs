@@ -9,4 +9,5 @@ extern crate sdl2;
 extern crate lazy_static;
 #[macro_use]
 extern crate log;
+extern crate nfd;
 extern crate sdl2_sys;

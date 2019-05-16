@@ -1,12 +1,8 @@
-//mod cpu;
-//use super::cpu;
-//extern crate lib;
-//use lib::cpu;
 extern crate chip8;
 use chip8::cpu;
 
 #[cfg(test)]
-mod integration_tests {
+mod cpu_tests {
 
     use super::*;
 
@@ -26,6 +22,18 @@ mod integration_tests {
 
         cpu.execute(&[0x10FF]).unwrap();
         assert_eq!(cpu.pc, 0xFF);
+    }
+
+    #[test]
+    fn test_cls() {
+        let mut cpu = cpu::Chip8::new();
+        for i in 0..cpu.video.len() {
+            cpu.video[i] = 0xFF;
+        }
+        cpu.execute(&[0x00E0]).unwrap();
+        for i in 0..cpu.video.len() {
+            assert_eq!(cpu.video[i], 0);
+        }
     }
 
     #[test]
