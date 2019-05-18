@@ -8,7 +8,7 @@ use std::string::String;
 const PROGRAM_START: usize = 512;
 const MEMORY_SIZE: usize = 4096;
 const VIDEO_SIZE: usize = 256;
-pub const MAX_PROGRAM_SIZE: usize = MEMORY_SIZE - PROGRAM_START;
+const MAX_PROGRAM_SIZE: usize = 3584;
 const PITCH: usize = 8;
 const STACK_SIZE: usize = 16;
 
@@ -45,40 +45,32 @@ impl Error for Chip8Error {
 }
 
 pub struct Chip8 {
-    pub video: [u8; VIDEO_SIZE],
-    pub memory: [u8; MEMORY_SIZE],
-    pub v: [u8; 16],
-    pub stack: [u16; 16],
-    pub keys: [bool; 16],
-    pub pc: usize,
-    pub sp: usize,
-    pub i: u16,
-    pub dt: u8,
-    pub st: u8,
-    pub pitch: usize,
-    pub error: Option<Chip8Error>,
+    state: Chip8State,
 }
 
+#[allow(dead_code)]
 impl Chip8 {
     pub fn new() -> Chip8 {
         Chip8 {
-            pc: PROGRAM_START,
-            sp: 0,
-            memory: [0; MEMORY_SIZE],
-            stack: [0; STACK_SIZE],
-            video: [0; VIDEO_SIZE],
-            keys: [false; 16],
-            v: [0; 16],
-            i: PROGRAM_START as u16,
-            dt: 0,
-            st: 0,
-            pitch: PITCH,
-            error: None,
+            state: Chip8State {
+                pc: PROGRAM_START,
+                sp: 0,
+                memory: [0; MEMORY_SIZE],
+                stack: [0; STACK_SIZE],
+                video: [0; VIDEO_SIZE],
+                keys: [false; 16],
+                v: [0; 16],
+                i: PROGRAM_START as u16,
+                dt: 0,
+                st: 0,
+                error: None,
+            },
         }
     }
 
-    pub fn fetch(address: u16, memory: &[u8; MEMORY_SIZE]) -> u16 {
-        (memory[address as usize] as u16) << 8 | (memory[address as usize + 1] as u16)
+    #[inline(always)]
+    pub fn state(&self) -> &Chip8State {
+        &self.state
     }
 
     pub fn disassemble(instruction: u16) -> DecodedInstruction {
@@ -91,16 +83,16 @@ impl Chip8 {
         let (op, params) = match instruction {
             0x00E0 => ("CLS", String::new()),
             0x00EE => ("RET", String::new()),
-            i if i & 0xF000 == 0x1000 => ("JP", format!("#{:04X}", addr)),
+            i if i & 0xF000 == 0x1000 => ("JUMP", format!("#{:04X}", addr)),
             i if i & 0xF000 == 0x2000 => ("CALL", format!("#{:04X}", addr)),
-            i if i & 0xF000 == 0x1000 => ("JP", format!("#{:04X}", addr)),
+            i if i & 0xF000 == 0x1000 => ("JUMP", format!("#{:04X}", addr)),
             i if i & 0xF000 == 0x2000 => ("CALL", format!("#{:04X}", addr)),
             i if i & 0xF000 == 0x3000 => ("SE", format!("V{:X}, {:02X}", x, byte)),
             i if i & 0xF000 == 0x4000 => ("SNE", format!("V{:X}, {:02X}", x, byte)),
             i if i & 0xF000 == 0x5000 => ("SE", format!("V{:X}, V{}", x, y)),
-            i if i & 0xF000 == 0x6000 => ("LD", format!("V{:X}, {:02X}", x, byte)),
+            i if i & 0xF000 == 0x6000 => ("LOAD", format!("V{:X}, {:02X}", x, byte)),
             i if i & 0xF000 == 0x7000 => ("ADD", format!("V{:X}, {:02X}", x, byte)),
-            i if i & 0xF00F == 0x8000 => ("LD", format!("V{:X}, V{:X}", x, y)),
+            i if i & 0xF00F == 0x8000 => ("LOAD", format!("V{:X}, V{:X}", x, y)),
             i if i & 0xF00F == 0x8001 => ("OR", format!("V{:X}, V{:X}", x, y)),
             i if i & 0xF00F == 0x8002 => ("AND", format!("V{:X}, V{:X}", x, y)),
             i if i & 0xF00F == 0x8003 => ("XOR", format!("V{:X}, V{:X}", x, y)),
@@ -110,21 +102,21 @@ impl Chip8 {
             i if i & 0xF00F == 0x8007 => ("SUBN", format!("V{:X}, V{:X}", x, y)),
             i if i & 0xF00F == 0x800E => ("SHL", format!("V{:X}, V{:X}", x, y)),
             i if i & 0xF00F == 0x9000 => ("SNE", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF000 == 0xA000 => ("LD", format!("I, #{:04X}", addr)),
-            i if i & 0xF000 == 0xB000 => ("JD", format!("V0, #{:04X}", addr)),
+            i if i & 0xF000 == 0xA000 => ("LOAD", format!("I, #{:04X}", addr)),
+            i if i & 0xF000 == 0xB000 => ("JUMP", format!("V0, #{:04X}", addr)),
             i if i & 0xF000 == 0xC000 => ("RND", format!("V{:X}, #{:02X}", x, byte)),
-            i if i & 0xF000 == 0xD000 => ("DRW", format!("V{:X}, V{:X}, {}", x, y, nibble)),
+            i if i & 0xF000 == 0xD000 => ("DRAW", format!("V{:X}, V{:X}, {}", x, y, nibble)),
             i if i & 0xF0FF == 0xE09E => ("SKP", format!("V{:X}", x)),
             i if i & 0xF0FF == 0xE0A1 => ("SKNP", format!("V{:X}", x)),
-            i if i & 0xF0FF == 0xF007 => ("LD", format!("V{:X}, DT", x)),
-            i if i & 0xF0FF == 0xF00A => ("LD", format!("V{:X}, K", x)),
-            i if i & 0xF0FF == 0xF015 => ("LD", format!("DT, V{:X}", x)),
-            i if i & 0xF0FF == 0xF018 => ("LD", format!("ST, V{:X}", x)),
+            i if i & 0xF0FF == 0xF007 => ("LOAD", format!("V{:X}, DT", x)),
+            i if i & 0xF0FF == 0xF00A => ("LOAD", format!("V{:X}, K", x)),
+            i if i & 0xF0FF == 0xF015 => ("LOAD", format!("DT, V{:X}", x)),
+            i if i & 0xF0FF == 0xF018 => ("LOAD", format!("ST, V{:X}", x)),
             i if i & 0xF0FF == 0xF01E => ("ADD", format!("I, V{:X}", x)),
-            i if i & 0xF0FF == 0xF029 => ("FNT", format!("I, V{:X}", x)),
+            i if i & 0xF0FF == 0xF029 => ("FONT", format!("I, V{:X}", x)),
             i if i & 0xF0FF == 0xF033 => ("BCD", format!("I, V{:X}", x)),
-            i if i & 0xF0FF == 0xF055 => ("LD", format!("[I], V0-V{:X}", x)),
-            i if i & 0xF0FF == 0xF065 => ("LD", format!("V0-V{:X}, [I]", x)),
+            i if i & 0xF0FF == 0xF055 => ("SAV", format!("[I], V{:X}", x)),
+            i if i & 0xF0FF == 0xF065 => ("RST", format!("V{:X}, [I]", x)),
             _ => ("???", String::new()),
         };
 
@@ -134,46 +126,136 @@ impl Chip8 {
         }
     }
 
-    pub fn reset(&mut self) {
-        self.pc = PROGRAM_START;
-        self.sp = 0;
-        self.memory = [0; MEMORY_SIZE];
-        self.stack = [0; STACK_SIZE];
-        self.video = [0; VIDEO_SIZE];
-        self.keys = [false; 16];
-        self.v = [0; 16];
-        self.i = PROGRAM_START as u16;
-        self.dt = 0;
-        self.st = 0;
-        self.pitch = PITCH;
-        self.error = None;
+    pub fn soft_reset(&mut self) {
+        let state = &mut self.state;
+
+        state.pc = PROGRAM_START;
+        state.sp = 0;
+        state.i = PROGRAM_START as u16;
+        state.dt = 0;
+        state.st = 0;
+        state.error = None;
+        state.stack = [0; STACK_SIZE];
+        state.video = [0; VIDEO_SIZE];
+        state.keys = [false; 16];
+        state.v = [0; 16];
     }
 
-    pub fn load_bytes(&mut self, bytes: &[u8]) -> Result<usize, Chip8Error> {
-        // TODO move
-
+    pub fn hard_reset(&mut self) {
+        self.soft_reset();
+        self.state.memory = [0; MEMORY_SIZE];
         for i in 0..rom::ROM.len() {
-            self.memory[i] = rom::ROM[i];
+            self.state.memory[i] = rom::ROM[i];
+        }
+    }
+
+    pub fn press_key(&mut self, key: usize) {
+        self.state.keys[key] = true;
+    }
+
+    pub fn release_key(&mut self, key: usize) {
+        self.state.keys[key] = false;
+    }
+
+    pub fn load_bytes(&mut self, bytes: &[u8]) -> Result<(), Chip8Error> {
+        let cpu = &mut self.state;
+        for i in 0..cpu.memory.len() {
+            cpu.memory[i] = 0;
         }
 
         if bytes.len() > MAX_PROGRAM_SIZE {
             return Err(Chip8Error::ProgramLoadError);
         }
 
-        for i in 0..self.memory.len() {
-            self.memory[i] = 0;
+        for i in 0..rom::ROM.len() {
+            cpu.memory[i] = rom::ROM[i];
         }
 
         for i in 0..bytes.len() {
-            self.memory[i + PROGRAM_START] = bytes[i];
+            cpu.memory[i + PROGRAM_START] = bytes[i];
         }
 
-        Ok(bytes.len())
+        Ok(())
     }
 
-    pub fn step(&mut self) -> Result<(), Chip8Error> {
-        let pc = self.pc;
-        self.v[0xF] = 0;
+    pub fn execute_cycle(&mut self) -> Result<(), Chip8Error> {
+        self.state.execute_cycle()
+    }
+}
+
+pub struct Chip8State {
+    pub video: [u8; VIDEO_SIZE],
+    pub memory: [u8; MEMORY_SIZE],
+    pub v: [u8; 16],
+    pub stack: [u16; 16],
+    pub keys: [bool; 16],
+    pub pc: usize,
+    pub sp: usize,
+    pub i: u16,
+    pub dt: u8,
+    pub st: u8,
+    pub error: Option<Chip8Error>,
+}
+
+#[allow(dead_code)]
+impl Chip8State {
+    #[inline(always)]
+    pub fn video(&self) -> &[u8] {
+        &self.video
+    }
+
+    #[inline(always)]
+    pub fn memory(&self) -> &[u8] {
+        &self.memory
+    }
+
+    #[inline(always)]
+    pub fn registers(&self) -> &[u8] {
+        &self.v
+    }
+
+    #[inline(always)]
+    pub fn stack(&self) -> &[u16] {
+        &self.stack
+    }
+
+    #[inline(always)]
+    pub fn i(&self) -> u16 {
+        self.i
+    }
+
+    #[inline(always)]
+    pub fn sp(&self) -> usize {
+        self.sp
+    }
+
+    #[inline(always)]
+    pub fn dt(&self) -> u8 {
+        self.dt
+    }
+
+    #[inline(always)]
+    pub fn st(&self) -> u8 {
+        self.st
+    }
+
+    #[inline(always)]
+    pub fn pc(&self) -> usize {
+        self.pc
+    }
+
+    #[inline(always)]
+    pub fn error(&self) -> Option<Chip8Error> {
+        None
+    }
+
+    pub fn fetch(&self, address: u16) -> u16 {
+        (self.memory[address as usize] as u16) << 8 | (self.memory[address as usize + 1] as u16)
+    }
+
+    pub fn execute_cycle(&mut self) -> Result<(), Chip8Error> {
+        //let pc = self.pc;
+        //self.v[0xF] = 0;
 
         if self.dt > 0 {
             self.dt -= 1;
@@ -183,15 +265,13 @@ impl Chip8 {
             self.st -= 1;
         }
 
-        let instruction: u16 = Self::fetch(pc as u16, &self.memory);
+        let instruction: u16 = self.fetch(self.pc as u16);
         self.pc += 2;
 
-        let result = self._execute(instruction);
-
-        result
+        self.execute(instruction)
     }
 
-    fn _execute(&mut self, instruction: u16) -> Result<(), Chip8Error> {
+    fn execute(&mut self, instruction: u16) -> Result<(), Chip8Error> {
         let addr: usize = (instruction & 0x0FFF) as usize;
         let byte: u8 = (instruction & 0x00FF) as u8;
         let nibble = (instruction & 0x000F) as u8;
@@ -375,7 +455,7 @@ impl Chip8 {
         } else {
             self.v[0xF] = 0;
         }
-        self.v[x] = self.v[y] - self.v[x];
+        self.v[x] = self.v[y].wrapping_sub(self.v[x]);
     }
 
     fn rnd(&mut self, x: usize, byte: u8) {
@@ -460,8 +540,7 @@ impl Chip8 {
     }
 
     fn fnt(&mut self, x: usize) {
-        // TODO improve
-        let addr = 0 + x * 5;
+        let addr = 0 + self.v[x] * 5;
         self.i = addr as u16;
     }
 
@@ -477,7 +556,7 @@ impl Chip8 {
     fn save(&mut self, x: usize) {
         let addr = self.i as usize;
 
-        for i in 0..x {
+        for i in 0..=x {
             self.memory[addr + i] = self.v[i];
         }
     }
@@ -485,19 +564,18 @@ impl Chip8 {
     fn restore(&mut self, x: usize) {
         let addr = self.i as usize;
 
-        for i in 0..x {
+        for i in 0..=x {
             self.v[i] = self.memory[addr + i];
         }
     }
+}
 
-    #[allow(dead_code)]
-    pub fn execute(&mut self, instructions: &[u16]) -> Result<(), Chip8Error> {
-        for instruction in instructions.iter() {
-            if let Err(err) = self._execute(*instruction) {
-                return Err(err);
-            }
-        }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-        Ok(())
+    #[test]
+    fn it_adds_two() {
+        // assert_eq!(4, add_two(2));
     }
 }

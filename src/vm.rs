@@ -12,7 +12,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::{EventPump, Sdl};
 
-use cpu::Chip8;
+use cpu::{Chip8, Chip8State};
 use display::Display;
 use rom;
 
@@ -41,6 +41,12 @@ pub struct VMState {
     pub hz: u32,
 }
 
+pub struct VMState2<'a> {
+    pub cpu: &'a Chip8State,
+    pub fps: i32,
+    pub hz: u32,
+}
+
 pub struct VM<'a> {
     display: Display<'a>,
     events: EventPump,
@@ -64,7 +70,7 @@ impl<'a> VM<'a> {
 
     pub fn start(&mut self) {
         let bytes = self.state.cpu.load_bytes(&rom::BOOT).unwrap();
-        info!("Loaded {} bytes", bytes);
+        //info!("Loaded {} bytes", bytes);
 
         let mut fps = FPSCounter::new(30);
         self.state.cpu_state = CPUState::Running;
@@ -79,7 +85,7 @@ impl<'a> VM<'a> {
 
             if cycles > 0 {
                 for _ in 0..cycles {
-                    if let Err(err) = self.state.cpu.step() {
+                    if let Err(err) = self.state.cpu.execute_cycle() {
                         error!("CPU Error: {}", err);
                         self.state.cpu_state = CPUState::Paused;
                     }
@@ -92,7 +98,12 @@ impl<'a> VM<'a> {
             }
 
             self.state.fps = fps.fps() as i32;
-            self.display.update(&self.state);
+            //self.display.update(&self.state);
+            self.display.update(&VMState2 {
+                cpu: self.state.cpu.state(),
+                hz: self.state.hz,
+                fps: self.state.fps,
+            });
 
             let mut delay = fps.frame();
             if self.state.cpu_state == CPUState::Paused || !self.display.focused() {
@@ -174,7 +185,7 @@ impl<'a> VM<'a> {
                 let mut file = File::open(file_path).unwrap();
                 let mut bytes = Vec::new();
                 file.read_to_end(&mut bytes).unwrap();
-                self.state.cpu.reset();
+                self.state.cpu.hard_reset();
                 self.state.cpu.load_bytes(&bytes).unwrap();
             }
             Response::OkayMultiple(files) => println!("Files {:?}", files),
@@ -183,11 +194,11 @@ impl<'a> VM<'a> {
     }
 
     fn key_down(&mut self, k: usize) {
-        self.state.cpu.keys[k] = true;
+        self.state.cpu.press_key(k);
     }
 
     fn key_up(&mut self, k: usize) {
-        self.state.cpu.keys[k] = false;
+        self.state.cpu.release_key(k);
     }
 
     fn dec_hz(&mut self) {

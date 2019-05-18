@@ -1,7 +1,7 @@
 extern crate sdl2_sys;
 
 use cpu::Chip8;
-use vm::VMState;
+use vm::VMState2;
 
 use logger::Logger;
 use sdl2::pixels::{Color, PixelFormatEnum};
@@ -73,7 +73,7 @@ impl Renderable for Screen {
         *SCREEN_FRAME
     }
 
-    fn render(&mut self, context: ContextRef, state: &VMState) {
+    fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
 
         let texture_creator = canvas.texture_creator();
@@ -83,8 +83,9 @@ impl Renderable for Screen {
 
         screen
             .with_lock(None, |buffer: &mut [u8], _pitch: usize| {
-                for byte_offset in 0..state.cpu.video.len() {
-                    let vm_byte = state.cpu.video[byte_offset];
+                let video = state.cpu.video();
+                for byte_offset in 0..video.len() {
+                    let vm_byte = video[byte_offset];
 
                     for bit_offset in 0..8 {
                         let buf_idx = (byte_offset * 8 * 3) + (bit_offset * 3);
@@ -125,7 +126,7 @@ impl Renderable for Instructions {
         *INSTRUCTION_FRAME
     }
 
-    fn render(&mut self, context: ContextRef, state: &VMState) {
+    fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
         let rect = self.rect();
         let fonts = &context.fonts;
@@ -133,8 +134,8 @@ impl Renderable for Instructions {
         let address = fonts.address();
         let instruction = fonts.instruction();
 
-        let hl_width = rect.width() - 25;
-        let x = rect.left() + 25;
+        let hl_width = rect.width() - 20;
+        let x = rect.left() + 20;
         let mut y = rect.top() + 20;
         let vm = &state.cpu;
 
@@ -147,22 +148,19 @@ impl Renderable for Instructions {
             let highlighted = vm.pc == addr;
 
             if highlighted {
-                let rect = Rect::new(x - 4, y - 3, hl_width, FONT_SPACING as u32);
+                let rect = Rect::new(x - 10, y - 3, hl_width, FONT_SPACING as u32);
                 canvas.set_draw_color(*INSTRUCTION_HL_COLOR);
                 canvas.fill_rect(rect).unwrap();
             }
 
-            let inst = Chip8::fetch(addr as u16, &vm.memory);
+            let inst = vm.fetch(addr as u16);
             let result = Chip8::disassemble(inst);
-            let low = inst as u8;
-            let high = (inst >> 8) as u8;
 
             text1!(canvas {
                 address @ x, y => format!("{:04X}", addr)
-                instruction @ x + 90, y => format!("{:02X}", high)
-                instruction @ x + 130, y => format!("{:02X}", low)
-                default @ x + 190, y => result.operation
-                default @ x + 310, y => result.params
+                instruction @ x + 85, y => format!("{:04X}", inst)
+                default @ x + 170, y => result.operation
+                default @ x + 280, y => result.params
             });
             y += FONT_SPACING;
         }
@@ -182,7 +180,7 @@ impl Renderable for Registers {
         *REGISTER_FRAME
     }
 
-    fn render(&mut self, context: ContextRef, state: &VMState) {
+    fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
         let rect = self.rect();
         let fonts = &context.fonts;
@@ -224,10 +222,12 @@ impl Renderable for Registers {
             address @ x + 460, y      => format!("{:02X}", vm.dt)
             default @ x + 600, y      => "SP"
             address @ x + 660, y      => format!("{:02X}", vm.sp)
-            default @ x,       y + 40 => "HZ"
-            address @ x + 60,  y + 40 => format!("{:04}", state.hz)
-            default @ x + 183, y + 40 => "FPS"
-            address @ x + 260, y + 40 => format!("{:02}", state.fps)
+            default @ x,       y + 40 => "I"
+            address @ x + 60,  y + 40 => format!("{:04X }", vm.i)
+            default @ x + 200, y + 40 => "HZ"
+            address @ x + 260, y + 40 => format!("{:04}", state.hz)
+            default @ x + 400, y + 40 => "FPS"
+            address @ x + 460, y + 40 => format!("{:02}", state.fps)
         });
     }
 }
@@ -249,7 +249,7 @@ impl Renderable for Log {
         *LOG_FRAME
     }
 
-    fn render(&mut self, context: ContextRef, _state: &VMState) {
+    fn render(&mut self, context: ContextRef, _state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
         let font = context.fonts.default();
         let rect = self.rect();
@@ -272,14 +272,14 @@ impl Renderable for Log {
 }
 
 trait Renderable {
-    fn render(&mut self, context: ContextRef, state: &VMState);
+    fn render(&mut self, context: ContextRef, state: &VMState2);
     fn rect(&self) -> Rect;
 }
 
 struct Panel(Box<Renderable>);
 
 impl Renderable for Panel {
-    fn render(&mut self, context: ContextRef, state: &VMState) {
+    fn render(&mut self, context: ContextRef, state: &VMState2) {
         {
             let mut canvas = context.canvas.borrow_mut();
             canvas.set_draw_color(*PANEL_COLOR);
@@ -343,7 +343,7 @@ impl<'a> Display<'a> {
         let window = sdl_context
             .video()
             .unwrap()
-            .window("CHIP-8", WINDOW_WIDTH * 2, WINDOW_HEIGHT * 2)
+            .window("CHIP-8", WINDOW_WIDTH, WINDOW_HEIGHT)
             .allow_highdpi()
             .build()
             .unwrap();
@@ -381,7 +381,7 @@ impl<'a> Display<'a> {
         }
     }
 
-    pub fn update(&mut self, state: &VMState) {
+    pub fn update(&mut self, state: &VMState2) {
         let context = &self.context;
 
         {

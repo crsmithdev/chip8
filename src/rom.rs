@@ -19,6 +19,7 @@ pub static ROM: &'static [u8] = &[
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 
           // 0x0040
+          // ...
 ];
 
 pub static BOOT: &'static [u8] = &[
