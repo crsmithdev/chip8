@@ -12,6 +12,7 @@ use sdl2::video::{Window, WindowContext};
 use sdl2::Sdl;
 use sdl2_sys::SDL_WindowFlags;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::path::Path;
 use std::rc::Rc;
@@ -323,6 +324,41 @@ impl<'a> Fonts<'a> {
     }
 }
 
+struct TextureBuilder {
+    creator: TextureCreator<WindowContext>,
+}
+
+impl TextureBuilder {
+    fn build<'a>(&'a self, font: &Font<'_, '_>, text: String, color: Color) -> Texture<'a> {
+        let surface = font.render(&text).blended(color).unwrap();
+        let texture = self.creator.create_texture_from_surface(&surface).unwrap();
+        texture
+    }
+}
+
+struct TextureManager<'t> {
+    builder: &'t TextureBuilder,
+    cache: HashMap<String, Texture<'t>>,
+}
+
+impl<'t> TextureManager<'t> {
+    fn get_or_create(&self, font: &Font<'_, '_>, text: String, color: Color) -> Texture<'t> {
+        self.builder.build(font, text, color)
+    }
+}
+
+struct FontWriter<'f, 't, 'm> {
+    font: Font<'f, 'static>,
+    color: Color,
+    manager: &'m TextureManager<'t>,
+}
+
+impl<'f, 't, 'm> FontWriter<'f, 't, 'm> {
+    fn write(&self, text: String) -> Texture<'t> {
+        self.manager.get_or_create(&self.font, text, self.color)
+    }
+}
+
 struct Context<'a> {
     fonts: Fonts<'a>,
     canvas: Rc<RefCell<Canvas<Window>>>,
@@ -356,6 +392,7 @@ impl<'a> Display<'a> {
             .unwrap();
 
         let texture_creator = Box::new(canvas.texture_creator());
+        let texture_creator2 = canvas.texture_creator();
         let canvas = Rc::new(RefCell::new(canvas));
         let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
 
@@ -374,6 +411,24 @@ impl<'a> Display<'a> {
             panel!(Registers::new()),
             panel!(Log::new()),
         ];
+
+        let builder = TextureBuilder {
+            creator: texture_creator2,
+        };
+        let manager = TextureManager {
+            builder: &builder,
+            cache: HashMap::new(),
+        };
+        let writer = FontWriter {
+            font: ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap(),
+            color: *TEXT_COLOR,
+            manager: &manager,
+        };
+        let writer2 = FontWriter {
+            font: ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap(),
+            color: *TEXT_COLOR,
+            manager: &manager,
+        };
 
         Display {
             context: context.clone(),
