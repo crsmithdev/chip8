@@ -69,10 +69,10 @@ impl<'a> VM<'a> {
     }
 
     pub fn start(&mut self) {
-        let bytes = self.state.cpu.load_bytes(&rom::BOOT).unwrap();
+        self.state.cpu.load_bytes(&rom::BOOT).unwrap();
         //info!("Loaded {} bytes", bytes);
 
-        let mut fps = FPSCounter::new(30);
+        let mut fps = FPSCounter::new(60);
         self.state.cpu_state = CPUState::Running;
         self.state.last_step = SystemTime::now();
 
@@ -222,8 +222,14 @@ impl<'a> VM<'a> {
 
     fn toggle_pause(&mut self) {
         self.state.cpu_state = match self.state.cpu_state {
-            CPUState::Running => CPUState::Paused,
-            CPUState::Paused => CPUState::Running,
+            CPUState::Running => {
+                info!("Paused");
+                CPUState::Paused
+            }
+            CPUState::Paused => {
+                info!("Resumed");
+                CPUState::Running
+            }
             state => state,
         };
     }

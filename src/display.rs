@@ -14,6 +14,7 @@ use sdl2_sys::SDL_WindowFlags;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -25,11 +26,11 @@ const N_MESSAGES: usize = 7;
 
 type ContextRef<'a> = Rc<Context<'a>>;
 
-macro_rules! text1 {
-    ($canvas:ident { $($face:ident @ $x:expr, $y:expr => $text:expr)* } ) => ({
+macro_rules! text {
+    ($canvas:ident, $writer:ident { $($style:ident @ $x:expr, $y:expr => $text:expr)* } ) => ({
         $({
-            //let text = format!($($arg)*);
-            let texture = $face(&$text);
+            let texture = $writer.write(&$text, $style);
+            //let texture = $face(&$text);
             let query = texture.query();
             let rect = Rect::new($x, $y, query.width, query.height);
             $canvas.copy(&texture, None, rect).unwrap();
@@ -61,11 +62,13 @@ lazy_static! {
     static ref REGISTER_FRAME: Rect = Rect::new(740, 815, 790, 317);
 }
 
-pub struct Screen {}
+pub struct Screen {
+    screen: Texture,
+}
 
 impl Screen {
-    fn new() -> Screen {
-        Screen {}
+    fn new(screen: Texture) -> Screen {
+        Screen { screen: screen }
     }
 }
 
@@ -77,12 +80,7 @@ impl Renderable for Screen {
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
 
-        let texture_creator = canvas.texture_creator();
-        let mut screen = texture_creator
-            .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
-            .unwrap();
-
-        screen
+        self.screen
             .with_lock(None, |buffer: &mut [u8], _pitch: usize| {
                 let video = state.cpu.video();
                 for byte_offset in 0..video.len() {
@@ -108,7 +106,9 @@ impl Renderable for Screen {
             })
             .unwrap();
 
-        canvas.copy(&screen, None, Some(*SCREEN_TARGET)).unwrap();
+        canvas
+            .copy(&self.screen, None, Some(*SCREEN_TARGET))
+            .unwrap();
     }
 }
 
@@ -129,11 +129,11 @@ impl Renderable for Instructions {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
+        let writer = context.writer.clone();
         let rect = self.rect();
-        let fonts = &context.fonts;
-        let default = fonts.default();
-        let address = fonts.address();
-        let instruction = fonts.instruction();
+        let default = Style::Default;
+        let address = Style::Address;
+        let instruction = Style::Instruction;
 
         let hl_width = rect.width() - 20;
         let x = rect.left() + 20;
@@ -157,7 +157,7 @@ impl Renderable for Instructions {
             let inst = vm.fetch(addr as u16);
             let result = Chip8::disassemble(inst);
 
-            text1!(canvas {
+            text!(canvas, writer {
                 address @ x, y => format!("{:04X}", addr)
                 instruction @ x + 85, y => format!("{:04X}", inst)
                 default @ x + 170, y => result.operation
@@ -183,11 +183,11 @@ impl Renderable for Registers {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
+        let writer = context.writer.clone();
         let rect = self.rect();
-        let fonts = &context.fonts;
-        let default = fonts.default();
-        let address = fonts.address();
-        let instruction = fonts.instruction();
+        let default = Style::Default;
+        let address = Style::Address;
+        let instruction = Style::Instruction;
         let spacing = FONT_SPACING;
         let vm = &state.cpu;
 
@@ -201,7 +201,7 @@ impl Renderable for Registers {
             for row in 0..4 {
                 let i = col * 4 + row;
                 let v = vm.v[i];
-                text1!(canvas {
+                text!(canvas, writer {
                     default     @ x,       y => format!("V{:X}", i)
                     address     @ x + 60,  y => format!("{:02X}", v)
                     instruction @ x + 100, y => format!("({})", v)
@@ -214,7 +214,7 @@ impl Renderable for Registers {
         let x = rect.left() + 20;
         let y = rect.top() + 10;
 
-        text1!(canvas {
+        text!(canvas, writer {
             default @ x,       y      => "PC"
             address @ x + 60,  y      => format!("{:04X}", vm.pc)
             default @ x + 200, y      => "ST"
@@ -252,7 +252,9 @@ impl Renderable for Log {
 
     fn render(&mut self, context: ContextRef, _state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        let font = context.fonts.default();
+        let writer = context.writer.clone();
+        //let font = context.fonts.default();
+        let font = Style::Default;
         let rect = self.rect();
         if context.log.unread() > 0 {
             let read = context.log.read();
@@ -264,7 +266,8 @@ impl Renderable for Log {
 
         let mut y = rect.top() + 10;
         for message in &self.messages {
-            text1!(canvas {
+            println!("{}", message);
+            text!(canvas, writer {
                 font @ rect.left() + 20, y => message
             });
             y += FONT_SPACING;
@@ -295,72 +298,78 @@ impl Renderable for Panel {
     }
 }
 
-struct Fonts<'a> {
-    texture_creator: Box<TextureCreator<WindowContext>>,
+struct TextureCache {
+    cache: HashMap<String, Rc<Texture>>,
+    cache2: HashMap<String, Texture>,
+}
+
+impl TextureCache {
+    fn get(&self, key: String) -> Option<Rc<Texture>> {
+        self.cache.get(&key).map(|x| x.clone())
+    }
+
+    fn put(&mut self, key: String, value: Rc<Texture>) {
+        self.cache.insert(key, value);
+    }
+
+    fn put2(&mut self, key: String, value: Texture) {
+        self.cache2.insert(key, value);
+    }
+
+    fn get2<'a>(&'a mut self, key: String) -> Option<&'a Texture> {
+        self.cache2.get(&String::from("text"))
+    }
+}
+
+struct FontWriter<'a> {
+    creator: TextureCreator<WindowContext>,
+    cache: Rc<RefCell<TextureCache>>,
     font: Font<'a, 'static>,
 }
 
-impl<'a> Fonts<'a> {
-    fn default(&'a self) -> impl Fn(&str) -> Texture<'a> {
-        move |s: &str| self.build_texture(s, *TEXT_COLOR)
-    }
+impl<'a> FontWriter<'a> {
+    fn write(&self, text: &str, style: Style) -> Rc<Texture> {
+        let key = String::from(format!("{}|{}", text, style));
+        let mut cache = self.cache.borrow_mut();
+        if let Some(texture) = cache.get(key.clone()) {
+            return texture.clone();
+        }
 
-    fn address(&'a self) -> impl Fn(&str) -> Texture<'a> {
-        move |s: &str| self.build_texture(s, *ADDR_COLOR)
+        let color = self.color(style);
+        let texture = self.build(&text, &self.font, color);
+        cache.put(key.clone(), Rc::new(texture));
+        cache.get(key).unwrap()
     }
-
-    fn instruction(&'a self) -> impl Fn(&str) -> Texture<'a> {
-        move |s: &str| self.build_texture(s, *INST_COLOR)
-    }
-
-    fn build_texture(&self, text: &str, color: Color) -> Texture {
+    fn build(&self, text: &str, font: &Font<'_, '_>, color: Color) -> Texture {
         let text = if text == "" { " " } else { text };
-        let surface = self.font.render(text).blended(color).unwrap();
-        let texture = self
-            .texture_creator
-            .create_texture_from_surface(&surface)
-            .unwrap();
-        texture
-    }
-}
-
-struct TextureBuilder {
-    creator: TextureCreator<WindowContext>,
-}
-
-impl TextureBuilder {
-    fn build<'a>(&'a self, font: &Font<'_, '_>, text: String, color: Color) -> Texture<'a> {
-        let surface = font.render(&text).blended(color).unwrap();
+        let surface = font.render(text).blended(color).unwrap();
         let texture = self.creator.create_texture_from_surface(&surface).unwrap();
         texture
     }
-}
-
-struct TextureManager<'t> {
-    builder: &'t TextureBuilder,
-    cache: HashMap<String, Texture<'t>>,
-}
-
-impl<'t> TextureManager<'t> {
-    fn get_or_create(&self, font: &Font<'_, '_>, text: String, color: Color) -> Texture<'t> {
-        self.builder.build(font, text, color)
+    fn color(&self, style: Style) -> Color {
+        match style {
+            Style::Default => *TEXT_COLOR,
+            Style::Address => *ADDR_COLOR,
+            Style::Instruction => *INST_COLOR,
+        }
     }
 }
 
-struct FontWriter<'f, 't, 'm> {
-    font: Font<'f, 'static>,
-    color: Color,
-    manager: &'m TextureManager<'t>,
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub enum Style {
+    Default,
+    Address,
+    Instruction,
 }
 
-impl<'f, 't, 'm> FontWriter<'f, 't, 'm> {
-    fn write(&self, text: String) -> Texture<'t> {
-        self.manager.get_or_create(&self.font, text, self.color)
+impl fmt::Display for Style {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
 
 struct Context<'a> {
-    fonts: Fonts<'a>,
+    writer: Rc<FontWriter<'a>>,
     canvas: Rc<RefCell<Canvas<Window>>>,
     log: &'static Logger,
 }
@@ -391,44 +400,37 @@ impl<'a> Display<'a> {
             .build()
             .unwrap();
 
-        let texture_creator = Box::new(canvas.texture_creator());
-        let texture_creator2 = canvas.texture_creator();
+        let texture_creator = canvas.texture_creator();
+        let screen = texture_creator
+            .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
+            .unwrap();
         let canvas = Rc::new(RefCell::new(canvas));
-        let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
-
-        let context = Rc::new(Context {
-            log: log,
-            canvas: canvas.clone(),
-            fonts: Fonts {
-                texture_creator: texture_creator,
-                font: font,
-            },
-        });
 
         let panels = vec![
             panel!(Instructions::new()),
-            panel!(Screen::new()),
+            panel!(Screen::new(screen)),
             panel!(Registers::new()),
             panel!(Log::new()),
         ];
 
-        let builder = TextureBuilder {
-            creator: texture_creator2,
-        };
-        let manager = TextureManager {
-            builder: &builder,
+        let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
+
+        let cache = TextureCache {
             cache: HashMap::new(),
+            cache2: HashMap::new(),
         };
-        let writer = FontWriter {
-            font: ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap(),
-            color: *TEXT_COLOR,
-            manager: &manager,
-        };
-        let writer2 = FontWriter {
-            font: ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap(),
-            color: *TEXT_COLOR,
-            manager: &manager,
-        };
+        let rc = Rc::new(RefCell::new(cache));
+        let writer2 = Rc::new(FontWriter {
+            creator: texture_creator,
+            font: font,
+            cache: rc.clone(),
+        });
+
+        let context = Rc::new(Context {
+            log: log,
+            canvas: canvas.clone(),
+            writer: writer2,
+        });
 
         Display {
             context: context.clone(),
