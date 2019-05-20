@@ -299,32 +299,9 @@ impl Renderable for Panel {
     }
 }
 
-struct TextureCache {
-    cache: HashMap<String, Rc<Texture>>,
-    cache2: HashMap<String, Texture>,
-}
-
-impl TextureCache {
-    fn get(&self, key: String) -> Option<Rc<Texture>> {
-        self.cache.get(&key).map(|x| x.clone())
-    }
-
-    fn put(&mut self, key: String, value: Rc<Texture>) {
-        self.cache.insert(key, value);
-    }
-
-    fn put2(&mut self, key: String, value: Texture) {
-        self.cache2.insert(key, value);
-    }
-
-    fn get2<'a>(&'a mut self, key: String) -> Option<&'a Texture> {
-        self.cache2.get(&String::from("text"))
-    }
-}
-
 struct FontWriter<'a> {
     creator: TextureCreator<WindowContext>,
-    cache: Rc<RefCell<TextureCache>>,
+    cache: Rc<RefCell<RcCache<Texture>>>,
     font: Font<'a, 'static>,
 }
 
@@ -332,14 +309,14 @@ impl<'a> FontWriter<'a> {
     fn write(&self, text: &str, style: Style) -> Rc<Texture> {
         let key = String::from(format!("{}|{}", text, style));
         let mut cache = self.cache.borrow_mut();
-        if let Some(texture) = cache.get(key.clone()) {
+        if let Some(texture) = cache.get(&key) {
             return texture.clone();
         }
 
         let color = self.color(style);
         let texture = self.build(&text, &self.font, color);
-        cache.put(key.clone(), Rc::new(texture));
-        cache.get(key).unwrap()
+        cache.put(&key, Rc::new(texture));
+        cache.get(&key).unwrap()
     }
     fn build(&self, text: &str, font: &Font<'_, '_>, color: Color) -> Texture {
         let text = if text == "" { " " } else { text };
@@ -416,15 +393,13 @@ impl<'a> Display<'a> {
 
         let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
 
-        let cache = TextureCache {
-            cache: HashMap::new(),
-            cache2: HashMap::new(),
-        };
-        let rc = Rc::new(RefCell::new(cache));
+
+        let cache2: RcCache<Texture> = RcCache::new();
+        let rc2 = Rc::new(RefCell::new(cache2));
         let writer2 = Rc::new(FontWriter {
             creator: texture_creator,
             font: font,
-            cache: rc.clone(),
+            cache: rc2.clone(),
         });
 
         let context = Rc::new(Context {
