@@ -315,7 +315,7 @@ impl<'a> FontWriter<'a> {
 
         let color = self.color(style);
         let texture = self.build(&text, &self.font, color);
-        cache.put(&key, Rc::new(texture));
+        cache.put(&key, texture);
         cache.get(&key).unwrap()
     }
     fn build(&self, text: &str, font: &Font<'_, '_>, color: Color) -> Texture {
