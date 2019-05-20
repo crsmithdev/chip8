@@ -323,23 +323,24 @@ impl TextureCache {
 
 struct FontWriter<'a> {
     creator: Box<TextureCreator<WindowContext>>,
-    cache: Box<TextureCache>,
+    cache: *mut TextureCache,
     font: Font<'a, 'static>,
 }
 
 impl<'a> FontWriter<'a> {
     fn write(&mut self, text: &str, style: Style) -> Rc<Texture> {
         let key = String::from(format!("{}|{}", text, style));
+        let cache: &'a mut TextureCache = unsafe { &mut *self.cache };
         //let mut cache = self.cache.borrow_mut();
 
-        if let Some(texture) = self.cache.get(key.clone()) {
+        if let Some(texture) = cache.get(key.clone()) {
             return texture.clone();
         }
 
         let color = self.color(style);
         let texture = self.build(&text, &self.font, color);
-        self.cache.put(key.clone(), Rc::new(texture));
-        self.cache.get(key).unwrap()
+        cache.put(key.clone(), Rc::new(texture));
+        cache.get(key).unwrap()
     }
     fn build(&self, text: &str, font: &Font<'_, '_>, color: Color) -> Texture {
         let text = if text == "" { " " } else { text };
@@ -370,6 +371,7 @@ impl fmt::Display for Style {
 }
 
 struct Context<'a> {
+    cache: Box<TextureCache>,
     writer: Rc<RefCell<FontWriter<'a>>>,
     canvas: Rc<RefCell<Canvas<Window>>>,
     log: &'static Logger,
@@ -420,15 +422,17 @@ impl<'a> Display<'a> {
             cache: HashMap::new(),
             cache2: HashMap::new(),
         };
+        let mut rc = Box::new(cache);
         let writer2 = FontWriter {
             creator: Box::new(texture_creator),
             font: font,
-            cache: Box::new(cache),
+            cache: &mut *rc,
         };
 
         let context = Rc::new(Context {
             log: log,
             canvas: canvas.clone(),
+            cache: rc,
             writer: Rc::new(RefCell::new(writer2)),
         });
 
