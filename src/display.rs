@@ -2,6 +2,7 @@ extern crate sdl2_sys;
 
 use cpu::Chip8;
 use vm::VMState2;
+use cache::{RefCache, RcCache};
 
 use logger::Logger;
 use sdl2::pixels::{Color, PixelFormatEnum};

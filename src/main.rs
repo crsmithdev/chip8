@@ -3,6 +3,7 @@ mod display;
 mod logger;
 mod rom;
 mod vm;
+mod cache;
 
 #[macro_use]
 extern crate lazy_static;
