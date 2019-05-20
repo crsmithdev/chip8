@@ -21,22 +21,22 @@ impl<T> RcCache<T> {
     }
 }
 
-pub struct RefCache {
-    cache: HashMap<String, CacheObj>,
+pub struct RefCache<T> {
+    cache: HashMap<String, T>,
 }
 
-impl RefCache {
-    pub fn new() -> RefCache {
+impl<T> RefCache<T> {
+    pub fn new() -> RefCache<T> {
         RefCache {
             cache: HashMap::new(),
         }
     }
 
-    fn get(&self, key: &str) -> Option<&CacheObj> {
+    fn get(&self, key: &str) -> Option<&T> {
         self.cache.get(key)
     }
 
-    fn put(&mut self, key: &str, value: CacheObj) {
+    fn put(&mut self, key: &str, value: T) {
         self.cache.insert(key.to_owned(), value);
     }
 }
