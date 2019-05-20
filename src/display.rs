@@ -129,7 +129,7 @@ impl Renderable for Instructions {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        let writer = context.writer.clone();
+        let mut writer = context.writer.borrow_mut();
         let rect = self.rect();
         let default = Style::Default;
         let address = Style::Address;
@@ -183,7 +183,7 @@ impl Renderable for Registers {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        let writer = context.writer.clone();
+        let mut writer = context.writer.borrow_mut();
         let rect = self.rect();
         let default = Style::Default;
         let address = Style::Address;
@@ -252,7 +252,7 @@ impl Renderable for Log {
 
     fn render(&mut self, context: ContextRef, _state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        let writer = context.writer.clone();
+        let mut writer = context.writer.borrow_mut();
         //let font = context.fonts.default();
         let font = Style::Default;
         let rect = self.rect();
@@ -322,23 +322,24 @@ impl TextureCache {
 }
 
 struct FontWriter<'a> {
-    creator: TextureCreator<WindowContext>,
-    cache: Rc<RefCell<TextureCache>>,
+    creator: Box<TextureCreator<WindowContext>>,
+    cache: Box<TextureCache>,
     font: Font<'a, 'static>,
 }
 
 impl<'a> FontWriter<'a> {
-    fn write(&self, text: &str, style: Style) -> Rc<Texture> {
+    fn write(&mut self, text: &str, style: Style) -> Rc<Texture> {
         let key = String::from(format!("{}|{}", text, style));
-        let mut cache = self.cache.borrow_mut();
-        if let Some(texture) = cache.get(key.clone()) {
+        //let mut cache = self.cache.borrow_mut();
+
+        if let Some(texture) = self.cache.get(key.clone()) {
             return texture.clone();
         }
 
         let color = self.color(style);
         let texture = self.build(&text, &self.font, color);
-        cache.put(key.clone(), Rc::new(texture));
-        cache.get(key).unwrap()
+        self.cache.put(key.clone(), Rc::new(texture));
+        self.cache.get(key).unwrap()
     }
     fn build(&self, text: &str, font: &Font<'_, '_>, color: Color) -> Texture {
         let text = if text == "" { " " } else { text };
@@ -369,7 +370,7 @@ impl fmt::Display for Style {
 }
 
 struct Context<'a> {
-    writer: Rc<FontWriter<'a>>,
+    writer: Rc<RefCell<FontWriter<'a>>>,
     canvas: Rc<RefCell<Canvas<Window>>>,
     log: &'static Logger,
 }
@@ -415,21 +416,20 @@ impl<'a> Display<'a> {
 
         let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
 
-        let cache = TextureCache {
+        let mut cache = TextureCache {
             cache: HashMap::new(),
             cache2: HashMap::new(),
         };
-        let rc = Rc::new(RefCell::new(cache));
-        let writer2 = Rc::new(FontWriter {
-            creator: texture_creator,
+        let writer2 = FontWriter {
+            creator: Box::new(texture_creator),
             font: font,
-            cache: rc.clone(),
-        });
+            cache: Box::new(cache),
+        };
 
         let context = Rc::new(Context {
             log: log,
             canvas: canvas.clone(),
-            writer: writer2,
+            writer: Rc::new(RefCell::new(writer2)),
         });
 
         Display {
