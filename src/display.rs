@@ -80,6 +80,8 @@ impl Renderable for Screen {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
+        let cache = self.cache.borrow_mut();
+        let cached = cache.get_mut("screen");
 
         self.screen
             .with_lock(None, |buffer: &mut [u8], _pitch: usize| {
@@ -347,6 +349,7 @@ impl fmt::Display for Style {
 }
 
 struct Context<'a> {
+    cache: Rc<RefCell<RcCache<Texture>>>,
     writer: Rc<FontWriter<'a>>,
     canvas: Rc<RefCell<Canvas<Window>>>,
     log: &'static Logger,
@@ -403,6 +406,7 @@ impl<'a> Display<'a> {
         });
 
         let context = Rc::new(Context {
+            cache: rc2.clone(),
             log: log,
             canvas: canvas.clone(),
             writer: writer2,
