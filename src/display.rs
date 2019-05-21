@@ -1,9 +1,9 @@
-use cache::TextureCache;
+use cache::RefCache;
 use cpu::Chip8;
 use logger::Logger;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
-use sdl2::render::Canvas;
+use sdl2::render::{Canvas, Texture};
 use sdl2::ttf::{Font, Sdl2TtfContext};
 use sdl2::video::Window;
 use sdl2::Sdl;
@@ -39,6 +39,7 @@ lazy_static! {
     static ref REGISTER_FRAME: Rect = Rect::new(740, 815, 790, 317);
 }
 
+pub type TextureCache = RefCache<Texture>;
 type ContextRef<'a> = Rc<Context<'a>>;
 
 macro_rules! text {

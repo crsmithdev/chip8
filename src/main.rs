@@ -24,7 +24,7 @@ fn main() {
         sdl: &sdl_context,
         ttf: &ttf_context,
         log: &log,
-        cache: &cache::TextureCache::new(),
+        cache: &display::TextureCache::new(),
     };
 
     let mut vm = VM::new(args);

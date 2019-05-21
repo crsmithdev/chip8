@@ -1,8 +1,5 @@
-use sdl2::render::Texture;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
-
-pub type TextureCache = RefCache<Texture>;
 
 pub struct RefCache<T> {
     cache: UnsafeCell<HashMap<String, UnsafeCell<T>>>,
@@ -41,11 +38,7 @@ impl<T> RefCache<T> {
         cache.get(key).map(|cell| unsafe { &mut *cell.get() })
     }
 
-    pub fn get_mut_or_else<'a, F: FnOnce() -> T>(
-        &'a self,
-        key: &'_ str,
-        default: F,
-    ) -> &'a mut T {
+    pub fn get_mut_or_else<'a, F: FnOnce() -> T>(&'a self, key: &'_ str, default: F) -> &'a mut T {
         let cache = unsafe { &*self.cache.get() };
         match cache.get(key) {
             Some(cell) => unsafe { &mut *cell.get() },
