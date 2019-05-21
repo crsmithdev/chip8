@@ -10,15 +10,15 @@ addons:
             - libsdl2-dev
             - libsdl2-ttf-dev
 rust:
-  - stable
-  - nightly
+    - stable
+    - nightly
 matrix:
-    - os: linux
-      rust: nightly
-      env: GTK=3.14
-    - os: linux
-      rust: stable
-      env: GTK=3.14
+  - os: linux
+    rust: nightly
+    env: GTK=3.14
+  - os: linux
+    rust: stable
+    env: GTK=3.14
 
   allow_failures:
     - rust: nightly
@@ -29,9 +29,9 @@ before_cache: |
   fi
 
 script:
-- cargo clean
-- cargo build
-- cargo test
+  - cargo clean
+  - cargo build
+  - cargo test
 
 after_success: |
   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
