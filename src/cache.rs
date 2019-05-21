@@ -25,13 +25,13 @@ impl<T> RefCache<T> {
         cache.get(key).map(|cell| unsafe { &*cell.get() })
     }
 
-    pub fn get_or_else<'a, F: FnOnce() -> T>(&'a self, key: &'_ str, default: F) -> Option<&'a T> {
+    pub fn get_or_else<'a, F: FnOnce() -> T>(&'a self, key: &'_ str, default: F) -> &'a T {
         let cache = unsafe { &*self.cache.get() };
         match cache.get(key) {
-            Some(cell) => Some(unsafe { &*cell.get() }),
+            Some(cell) => unsafe { &*cell.get() },
             None => {
                 self.put(key, default());
-                self.get(key)
+                self.get(key).unwrap()
             }
         }
     }
@@ -45,14 +45,14 @@ impl<T> RefCache<T> {
         &'a self,
         key: &'_ str,
         default: F,
-    ) -> Option<&'a mut T> {
+    ) -> &'a mut T {
         let cache = unsafe { &*self.cache.get() };
         match cache.get(key) {
-            Some(cell) => Some(unsafe { &mut *cell.get() }),
+            Some(cell) => unsafe { &mut *cell.get() },
             None => {
                 let mut value = default();
                 self.put(key, value);
-                self.get_mut(key)
+                self.get_mut(key).unwrap()
             }
         }
     }

@@ -1,15 +1,11 @@
-extern crate sdl2_sys;
-
 use cache::TextureCache;
 use cpu::Chip8;
-use vm::VMState2;
-
 use logger::Logger;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
-use sdl2::render::{Canvas, Texture, TextureCreator};
+use sdl2::render::Canvas;
 use sdl2::ttf::{Font, Sdl2TtfContext};
-use sdl2::video::{Window, WindowContext};
+use sdl2::video::Window;
 use sdl2::Sdl;
 use sdl2_sys::SDL_WindowFlags;
 use std::cell::RefCell;
@@ -17,6 +13,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
+use vm::VMState2;
 
 const WINDOW_WIDTH: u32 = 1024;
 const WINDOW_HEIGHT: u32 = 576;
@@ -24,40 +21,6 @@ const FONT_SIZE: u16 = 28;
 const FONT_SPACING: i32 = 43;
 const N_MESSAGES: usize = 7;
 const N_INSTRUCTIONS: usize = 25;
-
-type ContextRef<'a> = Rc<Context<'a>>;
-
-macro_rules! text {
-    ($canvas:ident, $writer:ident { $($style:tt @ $x:expr, $y:expr => $text:expr)* } ) => ({
-        $({
-            let texture = $writer.write(&$text, $style);
-            let query = texture.query();
-            let rect = Rect::new($x, $y, query.width, query.height);
-            $canvas.copy(&texture, None, rect).unwrap();
-        });*
-
-    });
-}
-
-macro_rules! text2 {
-    ($context:ident { $($style:expr => $x:expr, $y:expr => $text:expr)* } ) => ({
-        $({
-            let mut canvas = $context.canvas.borrow_mut();
-            let writer = $context.writer.clone();
-            let texture = writer.write(&$text, $style);
-            let query = texture.query();
-            let rect = Rect::new($x, $y, query.width, query.height);
-            canvas.copy(&texture, None, rect).unwrap();
-        });*
-
-    });
-}
-
-macro_rules! panel {
-    ($contents:expr) => {
-        Panel(Box::new($contents))
-    };
-}
 
 lazy_static! {
     static ref FONT_PATH: &'static Path = Path::new("../../resources/SourceCodePro-Semibold.ttf");
@@ -76,6 +39,35 @@ lazy_static! {
     static ref REGISTER_FRAME: Rect = Rect::new(740, 815, 790, 317);
 }
 
+type ContextRef<'a> = Rc<Context<'a>>;
+
+macro_rules! text {
+    ($context:ident { $($style:expr => $x:expr, $y:expr => $text:expr)* } ) => ({
+        let mut canvas = $context.canvas.borrow_mut();
+        $({
+            let key = format!("{}|{}", $text, $style);
+            let text: String = if $text == "" { " ".to_string() } else { $text };
+            let texture = $context.cache.get_or_else(&key, || {
+                let color = $style.color();
+                let surface = $context.font.render(&text).blended(color).unwrap();
+                let creator = canvas.texture_creator();
+                let texture = creator.create_texture_from_surface(&surface).unwrap();
+                texture
+            });
+            let query = texture.query();
+            let rect = Rect::new($x, $y, query.width, query.height);
+            canvas.copy(&texture, None, rect).unwrap();
+        });*
+
+    });
+}
+
+macro_rules! panel {
+    ($contents:expr) => {
+        Panel(Box::new($contents))
+    };
+}
+
 pub struct Screen {}
 
 impl Screen {
@@ -91,15 +83,12 @@ impl Renderable for Screen {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        let screen = context
-            .cache
-            .get_mut_or_else("screen", || {
-                canvas
-                    .texture_creator()
-                    .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
-                    .unwrap()
-            })
-            .unwrap();
+        let screen = context.cache.get_mut_or_else("screen", || {
+            canvas
+                .texture_creator()
+                .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
+                .unwrap()
+        });
 
         screen
             .with_lock(None, |buffer: &mut [u8], _: usize| {
@@ -165,7 +154,7 @@ impl Renderable for Instructions {
             let inst = cpu.fetch(address as u16);
             let result = Chip8::disassemble(inst);
 
-            text2!(context {
+            text!(context {
                 Style::Address     => x,       y => format!("{:04X}", address)
                 Style::Instruction => x + 85,  y => format!("{:04X}", inst)
                 Style::Default     => x + 170, y => result.operation
@@ -191,8 +180,6 @@ impl Renderable for Registers {
     }
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
-        let mut canvas = context.canvas.borrow_mut();
-        let writer = context.writer.clone();
         let rect = self.rect();
         let default = Style::Default;
         let address = Style::Address;
@@ -202,18 +189,21 @@ impl Renderable for Registers {
 
         let mut x = rect.left() + 20;
         let separator = Rect::new(rect.left() + 20, rect.top() + 110, rect.width() - 40, 5);
-        canvas.set_draw_color(*BG_COLOR);
-        canvas.fill_rect(separator).unwrap();
+        {
+            let mut canvas = context.canvas.borrow_mut();
+            canvas.set_draw_color(*BG_COLOR);
+            canvas.fill_rect(separator).unwrap();
+        }
 
         for col in 0..4 {
             let mut y = rect.top() + 135;
             for row in 0..4 {
                 let i = col * 4 + row;
                 let v = vm.v[i];
-                text!(canvas, writer {
-                    default     @ x,       y => format!("V{:X}", i)
-                    address     @ x + 60,  y => format!("{:02X}", v)
-                    instruction @ x + 100, y => format!("({})", v)
+                text!(context {
+                    default     => x,       y => format!("V{:X}", i)
+                    address     => x + 60,  y => format!("{:02X}", v)
+                    instruction => x + 100, y => format!("({})", v)
                 });
                 y += spacing;
             }
@@ -223,21 +213,21 @@ impl Renderable for Registers {
         let x = rect.left() + 20;
         let y = rect.top() + 10;
 
-        text!(canvas, writer {
-            default @ x,       y      => "PC"
-            address @ x + 60,  y      => format!("{:04X}", vm.pc)
-            default @ x + 200, y      => "ST"
-            address @ x + 260, y      => format!("{:02X}", vm.st)
-            default @ x + 400, y      => "DT"
-            address @ x + 460, y      => format!("{:02X}", vm.dt)
-            default @ x + 600, y      => "SP"
-            address @ x + 660, y      => format!("{:02X}", vm.sp)
-            default @ x,       y + 40 => "I"
-            address @ x + 60,  y + 40 => format!("{:04X }", vm.i)
-            default @ x + 200, y + 40 => "HZ"
-            address @ x + 260, y + 40 => format!("{:04}", state.hz)
-            default @ x + 400, y + 40 => "FPS"
-            address @ x + 460, y + 40 => format!("{:02}", state.fps)
+        text!(context {
+            default => x,       y      => "PC".to_owned()
+            address => x + 60,  y      => format!("{:04X}", vm.pc)
+            default => x + 200, y      => "ST".to_owned()
+            address => x + 260, y      => format!("{:02X}", vm.st)
+            default => x + 400, y      => "DT".to_owned()
+            address => x + 460, y      => format!("{:02X}", vm.dt)
+            default => x + 600, y      => "SP".to_owned()
+            address => x + 660, y      => format!("{:02X}", vm.sp)
+            default => x,       y + 40 => "I".to_owned()
+            address => x + 60,  y + 40 => format!("{:04X }", vm.i)
+            default => x + 200, y + 40 => "HZ".to_owned()
+            address => x + 260, y + 40 => format!("{:04}", state.hz)
+            default => x + 400, y + 40 => "FPS".to_owned()
+            address => x + 460, y + 40 => format!("{:02}", state.fps)
         });
     }
 }
@@ -260,9 +250,6 @@ impl Renderable for Log {
     }
 
     fn render(&mut self, context: ContextRef, _state: &VMState2) {
-        let mut canvas = context.canvas.borrow_mut();
-        let writer = context.writer.clone();
-        //let font = context.fonts.default();
         let font = Style::Default;
         let rect = self.rect();
         if context.log.unread() > 0 {
@@ -275,8 +262,8 @@ impl Renderable for Log {
 
         let mut y = rect.top() + 10;
         for message in &self.messages {
-            text!(canvas, writer {
-                font @ rect.left() + 20, y => message
+            text!(context {
+                font => rect.left() + 20, y => message.to_owned()
             });
             y += FONT_SPACING;
         }
@@ -306,46 +293,21 @@ impl Renderable for Panel {
     }
 }
 
-struct FontWriter<'a> {
-    creator: TextureCreator<WindowContext>,
-    cache: &'a TextureCache,
-    font: Font<'a, 'static>,
+#[derive(Debug)]
+pub enum Style {
+    Default,
+    Address,
+    Instruction,
 }
 
-impl<'a> FontWriter<'a> {
-    fn write(&self, text: &str, style: Style) -> &'a Texture {
-        let key = format!("{}|{}", text, style);
-        match self.cache.get(&key) {
-            Some(ref t) => t,
-            None => {
-                let color = self.color(style);
-                let texture = self.build(&text, &self.font, color);
-                self.cache.put(&key, texture);
-                self.cache.get(&key).unwrap()
-            }
-        }
-    }
-
-    fn build(&self, text: &str, font: &Font<'_, '_>, color: Color) -> Texture {
-        let text = if text == "" { " " } else { text };
-        let surface = font.render(text).blended(color).unwrap();
-        let texture = self.creator.create_texture_from_surface(&surface).unwrap();
-        texture
-    }
-    fn color(&self, style: Style) -> Color {
-        match style {
+impl Style {
+    fn color(&self) -> Color {
+        match self {
             Style::Default => *TEXT_COLOR,
             Style::Address => *ADDR_COLOR,
             Style::Instruction => *INST_COLOR,
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
-pub enum Style {
-    Default,
-    Address,
-    Instruction,
 }
 
 impl fmt::Display for Style {
@@ -356,9 +318,9 @@ impl fmt::Display for Style {
 
 struct Context<'a> {
     cache: &'a TextureCache,
-    writer: Rc<FontWriter<'a>>,
     canvas: Rc<RefCell<Canvas<Window>>>,
     log: &'static Logger,
+    font: Font<'a, 'static>,
 }
 
 pub struct Display<'a> {
@@ -388,9 +350,6 @@ impl<'a> Display<'a> {
             .build()
             .unwrap();
 
-        let texture_creator = canvas.texture_creator();
-        let canvas = Rc::new(RefCell::new(canvas));
-
         let panels = vec![
             panel!(Instructions::new()),
             panel!(Screen::new()),
@@ -398,19 +357,11 @@ impl<'a> Display<'a> {
             panel!(Log::new()),
         ];
 
-        let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
-
-        let writer2 = Rc::new(FontWriter {
-            creator: texture_creator,
-            font: font,
-            cache: cache,
-        });
-
         let context = Rc::new(Context {
             cache: cache,
             log: log,
-            canvas: canvas.clone(),
-            writer: writer2,
+            canvas: Rc::new(RefCell::new(canvas)),
+            font: ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap(),
         });
 
         Display {
