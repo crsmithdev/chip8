@@ -13,6 +13,13 @@ rust:
   - stable
   - nightly
 matrix:
+    - os: linux
+      rust: nightly
+      env: GTK=3.14
+    - os: linux
+      rust: stable
+      env: GTK=3.14
+
   allow_failures:
     - rust: nightly
 
