@@ -4,6 +4,7 @@ dist: bionic
 addons:
     apt:
         packages:
+            - build-essential
             - libssl-dev
             - libgtk-3-dev
             - libsdl2-dev
