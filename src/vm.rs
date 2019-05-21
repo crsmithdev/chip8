@@ -9,9 +9,11 @@ use logger::Logger;
 use nfd::Response;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
+use sdl2::render::Texture;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::{EventPump, Sdl};
 
+use cache::RcCache;
 use cpu::{Chip8, Chip8State};
 use display::Display;
 use rom;
@@ -23,6 +25,7 @@ pub struct VMArgs<'a> {
     pub sdl: &'a Sdl,
     pub ttf: &'a Sdl2TtfContext,
     pub log: &'static Logger,
+    pub cache: &'a RcCache<Texture>,
 }
 
 #[derive(Copy, Clone, PartialEq)]
@@ -56,7 +59,7 @@ pub struct VM<'a> {
 impl<'a> VM<'a> {
     pub fn new(args: VMArgs<'a>) -> VM<'a> {
         VM {
-            display: Display::new(args.sdl, args.ttf, args.log),
+            display: Display::new(args.sdl, args.ttf, args.log, args.cache),
             events: args.sdl.event_pump().unwrap(),
             state: VMState {
                 cpu: Chip8::new(),
