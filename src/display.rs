@@ -1,5 +1,6 @@
 extern crate sdl2_sys;
 
+use cache::{RcCache, TextureCache};
 use cpu::Chip8;
 use vm::VMState2;
 
@@ -12,7 +13,6 @@ use sdl2::video::{Window, WindowContext};
 use sdl2::Sdl;
 use sdl2_sys::SDL_WindowFlags;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fmt;
 use std::path::Path;
@@ -30,10 +30,23 @@ macro_rules! text {
     ($canvas:ident, $writer:ident { $($style:ident @ $x:expr, $y:expr => $text:expr)* } ) => ({
         $({
             let texture = $writer.write(&$text, $style);
-            //let texture = $face(&$text);
             let query = texture.query();
             let rect = Rect::new($x, $y, query.width, query.height);
             $canvas.copy(&texture, None, rect).unwrap();
+        });*
+
+    });
+}
+
+macro_rules! text2 {
+    ($context:ident { $($style:ident @ $x:expr, $y:expr => $text:expr)* } ) => ({
+        $({
+            let mut canvas = $context.canvas.borrow_mut();
+            let writer = $context.writer.clone();
+            let texture = writer.write(&$text, $style);
+            let query = texture.query();
+            let rect = Rect::new($x, $y, query.width, query.height);
+            canvas.copy(&texture, None, rect).unwrap();
         });*
 
     });
@@ -62,13 +75,11 @@ lazy_static! {
     static ref REGISTER_FRAME: Rect = Rect::new(740, 815, 790, 317);
 }
 
-pub struct Screen {
-    screen: Texture,
-}
+pub struct Screen {}
 
 impl Screen {
-    fn new(screen: Texture) -> Screen {
-        Screen { screen: screen }
+    fn new() -> Screen {
+        Screen {}
     }
 }
 
@@ -79,8 +90,13 @@ impl Renderable for Screen {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
+        //let mut cache = context.cache.borrow_mut();
+        let texture_creator = canvas.texture_creator();
+        let mut screen = texture_creator
+            .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
+            .unwrap();
 
-        self.screen
+        screen
             .with_lock(None, |buffer: &mut [u8], _pitch: usize| {
                 let video = state.cpu.video();
                 for byte_offset in 0..video.len() {
@@ -106,9 +122,7 @@ impl Renderable for Screen {
             })
             .unwrap();
 
-        canvas
-            .copy(&self.screen, None, Some(*SCREEN_TARGET))
-            .unwrap();
+        canvas.copy(&screen, None, Some(*SCREEN_TARGET)).unwrap();
     }
 }
 
@@ -128,8 +142,7 @@ impl Renderable for Instructions {
     }
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
-        let mut canvas = context.canvas.borrow_mut();
-        let mut writer = context.writer.borrow_mut();
+        //let writer = context.writer.clone();
         let rect = self.rect();
         let default = Style::Default;
         let address = Style::Address;
@@ -149,6 +162,7 @@ impl Renderable for Instructions {
             let highlighted = vm.pc == addr;
 
             if highlighted {
+                let mut canvas = context.canvas.borrow_mut();
                 let rect = Rect::new(x - 10, y - 3, hl_width, FONT_SPACING as u32);
                 canvas.set_draw_color(*INSTRUCTION_HL_COLOR);
                 canvas.fill_rect(rect).unwrap();
@@ -157,7 +171,7 @@ impl Renderable for Instructions {
             let inst = vm.fetch(addr as u16);
             let result = Chip8::disassemble(inst);
 
-            text!(canvas, writer {
+            text2!(context {
                 address @ x, y => format!("{:04X}", addr)
                 instruction @ x + 85, y => format!("{:04X}", inst)
                 default @ x + 170, y => result.operation
@@ -183,7 +197,7 @@ impl Renderable for Registers {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        let mut writer = context.writer.borrow_mut();
+        let writer = context.writer.clone();
         let rect = self.rect();
         let default = Style::Default;
         let address = Style::Address;
@@ -252,7 +266,7 @@ impl Renderable for Log {
 
     fn render(&mut self, context: ContextRef, _state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        let mut writer = context.writer.borrow_mut();
+        let writer = context.writer.clone();
         //let font = context.fonts.default();
         let font = Style::Default;
         let rect = self.rect();
@@ -266,7 +280,6 @@ impl Renderable for Log {
 
         let mut y = rect.top() + 10;
         for message in &self.messages {
-            println!("{}", message);
             text!(canvas, writer {
                 font @ rect.left() + 20, y => message
             });
@@ -298,49 +311,24 @@ impl Renderable for Panel {
     }
 }
 
-struct TextureCache {
-    cache: HashMap<String, Rc<Texture>>,
-    cache2: HashMap<String, Texture>,
-}
-
-impl TextureCache {
-    fn get(&self, key: String) -> Option<Rc<Texture>> {
-        self.cache.get(&key).map(|x| x.clone())
-    }
-
-    fn put(&mut self, key: String, value: Rc<Texture>) {
-        self.cache.insert(key, value);
-    }
-
-    fn put2(&mut self, key: String, value: Texture) {
-        self.cache2.insert(key, value);
-    }
-
-    fn get2<'a>(&'a mut self, key: String) -> Option<&'a Texture> {
-        self.cache2.get(&String::from("text"))
-    }
-}
-
 struct FontWriter<'a> {
-    creator: Box<TextureCreator<WindowContext>>,
-    cache: *mut TextureCache,
+    creator: TextureCreator<WindowContext>,
+    cache: &'a TextureCache,
     font: Font<'a, 'static>,
 }
 
 impl<'a> FontWriter<'a> {
-    fn write(&mut self, text: &str, style: Style) -> Rc<Texture> {
+    fn write(&self, text: &str, style: Style) -> Rc<Texture> {
         let key = String::from(format!("{}|{}", text, style));
-        let cache: &'a mut TextureCache = unsafe { &mut *self.cache };
-        //let mut cache = self.cache.borrow_mut();
-
-        if let Some(texture) = cache.get(key.clone()) {
+        let mut cache = self.cache; //.borrow_mut();
+        if let Some(texture) = cache.get(&key) {
             return texture.clone();
         }
 
         let color = self.color(style);
         let texture = self.build(&text, &self.font, color);
-        cache.put(key.clone(), Rc::new(texture));
-        cache.get(key).unwrap()
+        cache.put(&key, texture);
+        cache.get(&key).unwrap()
     }
     fn build(&self, text: &str, font: &Font<'_, '_>, color: Color) -> Texture {
         let text = if text == "" { " " } else { text };
@@ -371,8 +359,8 @@ impl fmt::Display for Style {
 }
 
 struct Context<'a> {
-    cache: Box<TextureCache>,
-    writer: Rc<RefCell<FontWriter<'a>>>,
+    cache: &'a TextureCache,
+    writer: Rc<FontWriter<'a>>,
     canvas: Rc<RefCell<Canvas<Window>>>,
     log: &'static Logger,
 }
@@ -387,6 +375,7 @@ impl<'a> Display<'a> {
         sdl_context: &'a Sdl,
         ttf_context: &'a Sdl2TtfContext,
         log: &'static Logger,
+        cache: &'a TextureCache,
     ) -> Display<'a> {
         let window = sdl_context
             .video()
@@ -404,36 +393,30 @@ impl<'a> Display<'a> {
             .unwrap();
 
         let texture_creator = canvas.texture_creator();
-        let screen = texture_creator
-            .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
-            .unwrap();
         let canvas = Rc::new(RefCell::new(canvas));
 
         let panels = vec![
             panel!(Instructions::new()),
-            panel!(Screen::new(screen)),
+            panel!(Screen::new()),
             panel!(Registers::new()),
             panel!(Log::new()),
         ];
 
         let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
 
-        let mut cache = TextureCache {
-            cache: HashMap::new(),
-            cache2: HashMap::new(),
-        };
-        let mut rc = Box::new(cache);
-        let writer2 = FontWriter {
-            creator: Box::new(texture_creator),
+        let cache2: RcCache<Texture> = RcCache::new();
+        let rc2 = Rc::new(RefCell::new(cache2));
+        let writer2 = Rc::new(FontWriter {
+            creator: texture_creator,
             font: font,
-            cache: &mut *rc,
-        };
+            cache: cache,
+        });
 
         let context = Rc::new(Context {
+            cache: cache,
             log: log,
             canvas: canvas.clone(),
-            cache: rc,
-            writer: Rc::new(RefCell::new(writer2)),
+            writer: writer2,
         });
 
         Display {
