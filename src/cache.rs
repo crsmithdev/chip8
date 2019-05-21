@@ -1,41 +1,59 @@
 use sdl2::render::Texture;
-use std::cell::RefCell;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 
-pub type TextureCache = RcCache<Texture>;
+pub type TextureCache = RefCache<Texture>;
 
-pub struct RcCache<T> {
-    immutable: UnsafeCell<HashMap<String, Rc<T>>>,
-    mutable: HashMap<String, Rc<RefCell<T>>>,
+pub struct RefCache<T> {
+    cache: UnsafeCell<HashMap<String, UnsafeCell<T>>>,
 }
 
-impl<T> RcCache<T> {
-    pub fn new() -> RcCache<T> {
-        RcCache {
-            immutable: UnsafeCell::new(HashMap::new()),
-            mutable: HashMap::new(),
+impl<T> RefCache<T> {
+    pub fn new() -> RefCache<T> {
+        RefCache {
+            cache: UnsafeCell::new(HashMap::new()),
         }
     }
 
-    pub fn put(&self, key: &str, value: T) {
-        let mut cache = unsafe { &mut *self.immutable.get() };
-        cache.insert(key.to_owned(), Rc::new(value));
+    pub fn put<'a>(&'a self, key: &'_ str, value: T) {
+        let cache = unsafe { &mut *self.cache.get() };
+        cache.insert(key.to_owned(), UnsafeCell::new(value));
     }
 
-    pub fn get(&self, key: &str) -> Option<Rc<T>> {
-        let cache = unsafe { &*self.immutable.get() };
-        cache.get(key).map(|x| x.clone())
-    }
-    /*
-    pub fn put_mut(&mut self, key: &str, value: T) {
-        self.mutable
-            .insert(key.to_owned(), Rc::new(RefCell::new(value)));
+    pub fn get<'a>(&'a self, key: &'_ str) -> Option<&'a T> {
+        let cache = unsafe { &*self.cache.get() };
+        cache.get(key).map(|cell| unsafe { &*cell.get() })
     }
 
-    pub fn get_mut(&self, key: &str) -> Option<Rc<RefCell<T>>> {
-        self.mutable.get(key).map(|x| x.clone())
+    pub fn get_or_else<'a, F: FnOnce() -> T>(&'a self, key: &'_ str, default: F) -> Option<&'a T> {
+        let cache = unsafe { &*self.cache.get() };
+        match cache.get(key) {
+            Some(cell) => Some(unsafe { &*cell.get() }),
+            None => {
+                self.put(key, default());
+                self.get(key)
+            }
+        }
     }
-    */
+
+    pub fn get_mut<'a>(&'a self, key: &'_ str) -> Option<&'a mut T> {
+        let cache = unsafe { &*self.cache.get() };
+        cache.get(key).map(|cell| unsafe { &mut *cell.get() })
+    }
+
+    pub fn get_mut_or_else<'a, F: FnOnce() -> T>(
+        &'a self,
+        key: &'_ str,
+        default: F,
+    ) -> Option<&'a mut T> {
+        let cache = unsafe { &*self.cache.get() };
+        match cache.get(key) {
+            Some(cell) => Some(unsafe { &mut *cell.get() }),
+            None => {
+                let mut value = default();
+                self.put(key, value);
+                self.get_mut(key)
+            }
+        }
+    }
 }

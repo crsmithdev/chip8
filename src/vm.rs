@@ -13,7 +13,7 @@ use sdl2::render::Texture;
 use sdl2::ttf::Sdl2TtfContext;
 use sdl2::{EventPump, Sdl};
 
-use cache::RcCache;
+use cache::RefCache;
 use cpu::{Chip8, Chip8State};
 use display::Display;
 use rom;
@@ -25,7 +25,7 @@ pub struct VMArgs<'a> {
     pub sdl: &'a Sdl,
     pub ttf: &'a Sdl2TtfContext,
     pub log: &'static Logger,
-    pub cache: &'a RcCache<Texture>,
+    pub cache: &'a RefCache<Texture>,
 }
 
 #[derive(Copy, Clone, PartialEq)]

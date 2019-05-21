@@ -1,6 +1,6 @@
 extern crate sdl2_sys;
 
-use cache::{RcCache, TextureCache};
+use cache::TextureCache;
 use cpu::Chip8;
 use vm::VMState2;
 
@@ -23,11 +23,12 @@ const WINDOW_HEIGHT: u32 = 576;
 const FONT_SIZE: u16 = 28;
 const FONT_SPACING: i32 = 43;
 const N_MESSAGES: usize = 7;
+const N_INSTRUCTIONS: usize = 25;
 
 type ContextRef<'a> = Rc<Context<'a>>;
 
 macro_rules! text {
-    ($canvas:ident, $writer:ident { $($style:ident @ $x:expr, $y:expr => $text:expr)* } ) => ({
+    ($canvas:ident, $writer:ident { $($style:tt @ $x:expr, $y:expr => $text:expr)* } ) => ({
         $({
             let texture = $writer.write(&$text, $style);
             let query = texture.query();
@@ -39,7 +40,7 @@ macro_rules! text {
 }
 
 macro_rules! text2 {
-    ($context:ident { $($style:ident @ $x:expr, $y:expr => $text:expr)* } ) => ({
+    ($context:ident { $($style:expr => $x:expr, $y:expr => $text:expr)* } ) => ({
         $({
             let mut canvas = $context.canvas.borrow_mut();
             let writer = $context.writer.clone();
@@ -65,9 +66,9 @@ lazy_static! {
     static ref INST_COLOR: Color = Color::RGBA(198, 146, 233, 255);
     static ref BG_COLOR: Color = Color::RGBA(27, 31, 43, 0xFF);
     static ref PANEL_COLOR: Color = Color::RGBA(42, 46, 62, 0xFF);
-    static ref INSTRUCTION_HL_COLOR: Color = Color::RGBA(27, 31, 43, 255);
-    static ref SCREEN_PX_OFF_COLOR: Color = Color::RGBA(0x8F, 0x91, 0x85, 0xFF);
-    static ref SCREEN_PX_ON_COLOR: Color = Color::RGBA(0x11, 0x13, 0x2B, 0xFF);
+    static ref HIGHLIGHT_COLOR: Color = Color::RGBA(27, 31, 43, 255);
+    static ref SCREEN_OFF_COLOR: Color = Color::RGBA(0x8F, 0x91, 0x85, 0xFF);
+    static ref SCREEN_ON_COLOR: Color = Color::RGBA(0x11, 0x13, 0x2B, 0xFF);
     static ref SCREEN_TARGET: Rect = Rect::new(40, 40, 1470, 735);
     static ref SCREEN_FRAME: Rect = Rect::new(20, 20, 1510, 775);
     static ref LOG_FRAME: Rect = Rect::new(20, 815, 700, 317);
@@ -90,33 +91,32 @@ impl Renderable for Screen {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        //let mut cache = context.cache.borrow_mut();
-        let texture_creator = canvas.texture_creator();
-        let mut screen = texture_creator
-            .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
+        let screen = context
+            .cache
+            .get_mut_or_else("screen", || {
+                canvas
+                    .texture_creator()
+                    .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
+                    .unwrap()
+            })
             .unwrap();
 
         screen
-            .with_lock(None, |buffer: &mut [u8], _pitch: usize| {
+            .with_lock(None, |buffer: &mut [u8], _: usize| {
                 let video = state.cpu.video();
                 for byte_offset in 0..video.len() {
-                    let vm_byte = video[byte_offset];
+                    let byte = video[byte_offset];
 
                     for bit_offset in 0..8 {
-                        let buf_idx = (byte_offset * 8 * 3) + (bit_offset * 3);
+                        let i = (byte_offset * 8 * 3) + (bit_offset * 3);
+                        let color = match byte & (1 << (7 - bit_offset)) {
+                            0 => *SCREEN_OFF_COLOR,
+                            _ => *SCREEN_ON_COLOR,
+                        };
 
-                        match vm_byte & (1 << (7 - bit_offset)) {
-                            0 => {
-                                buffer[buf_idx] = SCREEN_PX_OFF_COLOR.r;
-                                buffer[buf_idx + 1] = SCREEN_PX_OFF_COLOR.g;
-                                buffer[buf_idx + 2] = SCREEN_PX_OFF_COLOR.b;
-                            }
-                            _ => {
-                                buffer[buf_idx] = SCREEN_PX_ON_COLOR.r;
-                                buffer[buf_idx + 1] = SCREEN_PX_ON_COLOR.g;
-                                buffer[buf_idx + 2] = SCREEN_PX_ON_COLOR.b;
-                            }
-                        }
+                        buffer[i] = color.r;
+                        buffer[i + 1] = color.g;
+                        buffer[i + 2] = color.b;
                     }
                 }
             })
@@ -127,12 +127,12 @@ impl Renderable for Screen {
 }
 
 pub struct Instructions {
-    address: usize,
+    offset: usize,
 }
 
 impl Instructions {
     fn new() -> Instructions {
-        Instructions { address: 512 }
+        Instructions { offset: 512 }
     }
 }
 
@@ -142,41 +142,36 @@ impl Renderable for Instructions {
     }
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
-        //let writer = context.writer.clone();
         let rect = self.rect();
-        let default = Style::Default;
-        let address = Style::Address;
-        let instruction = Style::Instruction;
-
-        let hl_width = rect.width() - 20;
+        let cpu = &state.cpu;
         let x = rect.left() + 20;
         let mut y = rect.top() + 20;
-        let vm = &state.cpu;
 
-        if vm.pc < self.address || vm.pc - self.address > 30 || vm.pc - self.address < 4 {
-            self.address = vm.pc - 4;
+        if cpu.pc < self.offset + 4 || cpu.pc > self.offset + N_INSTRUCTIONS * 2 - 4 {
+            self.offset = cpu.pc - 4;
         }
 
-        for offset in 0..25 {
-            let addr = self.address + offset * 2;
-            let highlighted = vm.pc == addr;
+        for i in 0..N_INSTRUCTIONS {
+            let address = self.offset + i * 2;
 
-            if highlighted {
+            if cpu.pc == address {
+                let width = rect.width() - 20;
+                let rect = Rect::new(x - 10, y - 3, width, FONT_SPACING as u32);
                 let mut canvas = context.canvas.borrow_mut();
-                let rect = Rect::new(x - 10, y - 3, hl_width, FONT_SPACING as u32);
-                canvas.set_draw_color(*INSTRUCTION_HL_COLOR);
+                canvas.set_draw_color(*HIGHLIGHT_COLOR);
                 canvas.fill_rect(rect).unwrap();
             }
 
-            let inst = vm.fetch(addr as u16);
+            let inst = cpu.fetch(address as u16);
             let result = Chip8::disassemble(inst);
 
             text2!(context {
-                address @ x, y => format!("{:04X}", addr)
-                instruction @ x + 85, y => format!("{:04X}", inst)
-                default @ x + 170, y => result.operation
-                default @ x + 280, y => result.params
+                Style::Address     => x,       y => format!("{:04X}", address)
+                Style::Instruction => x + 85,  y => format!("{:04X}", inst)
+                Style::Default     => x + 170, y => result.operation
+                Style::Default     => x + 280, y => result.params
             });
+
             y += FONT_SPACING;
         }
     }
@@ -318,18 +313,19 @@ struct FontWriter<'a> {
 }
 
 impl<'a> FontWriter<'a> {
-    fn write(&self, text: &str, style: Style) -> Rc<Texture> {
-        let key = String::from(format!("{}|{}", text, style));
-        let mut cache = self.cache; //.borrow_mut();
-        if let Some(texture) = cache.get(&key) {
-            return texture.clone();
+    fn write(&self, text: &str, style: Style) -> &'a Texture {
+        let key = format!("{}|{}", text, style);
+        match self.cache.get(&key) {
+            Some(ref t) => t,
+            None => {
+                let color = self.color(style);
+                let texture = self.build(&text, &self.font, color);
+                self.cache.put(&key, texture);
+                self.cache.get(&key).unwrap()
+            }
         }
-
-        let color = self.color(style);
-        let texture = self.build(&text, &self.font, color);
-        cache.put(&key, texture);
-        cache.get(&key).unwrap()
     }
+
     fn build(&self, text: &str, font: &Font<'_, '_>, color: Color) -> Texture {
         let text = if text == "" { " " } else { text };
         let surface = font.render(text).blended(color).unwrap();
@@ -404,8 +400,6 @@ impl<'a> Display<'a> {
 
         let font = ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap();
 
-        let cache2: RcCache<Texture> = RcCache::new();
-        let rc2 = Rc::new(RefCell::new(cache2));
         let writer2 = Rc::new(FontWriter {
             creator: texture_creator,
             font: font,
