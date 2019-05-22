@@ -39,6 +39,7 @@ before_install: |
   ls -alh /usr/local/lib
   rustc --print sysroot
   echo $LD_LIBRARY_PATH
+  cd ..
 
   # Compile packages
   # ls -d SDL2*/ | xargs -i bash -c "cd {} && ./configure && make"
