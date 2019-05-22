@@ -7,12 +7,6 @@ addons:
       - build-essential
       - libssl-dev
       - libgtk-3-dev
-rust:
-  - stable
-  - nightly
-matrix:
-  allow_failures:
-    - rust: nightly
 
 before_install: |
   set -x
@@ -43,6 +37,9 @@ before_install: |
   make
   sudo make install
 
+  ls /usr/local/lib
+  ls /usr/local/lib | grep sdl
+
 
   # Compile packages
   # ls -d SDL2*/ | xargs -i bash -c "cd {} && ./configure && make"
@@ -67,6 +64,13 @@ before_install: |
 #   ls -d SDL2*/ | xargs -i bash -c "cd {} && ./configure && make"
 #   # Install packages
 #   ls -d SDL2*/ | xargs -i bash -c "cd {} && sudo make install"
+rust:
+  - stable
+  - nightly
+
+matrix:
+  allow_failures:
+    - rust: nightly
 
 script:
   - cargo clean
