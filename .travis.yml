@@ -72,9 +72,9 @@ matrix:
     - rust: nightly
 
 script:
-  - cargo clean
-  - cargo build
-  - cargo test
+  - cargo clean --verbose
+  - cargo build --verbose
+  - cargo test --verbose
 
 after_success: |
   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
