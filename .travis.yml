@@ -26,12 +26,26 @@ before_install: |
 
   # Unpack archives
   # ls SDL2*.tar.gz | xargs -i tar -zxvf {}
+  wget https://www.libsdl.org/release/SDL2-2.0.9.tar.gz
   tar -zxvf SDL2-2.0.9.tar.gz
+  cd SDL2-2.0.9
+  ./configure
+  make
+  sudo make install
+
+  cd ..
   ls -alh
+
+  wget https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-2.0.15.tar.gz
+  tar -zxvf SDL2_ttf-2.0.15.tar.gz
+  cd SDL2_ttf-2.0.15
+  ./configure
+  make
+  sudo make install
+
 
   # Compile packages
   # ls -d SDL2*/ | xargs -i bash -c "cd {} && ./configure && make"
-  cd SDL2-2.0.9 && ./configure && make
   # Install packages
   # ls -d SDL2*/ | xargs -i bash -c "cd {} && sudo make install"
 
