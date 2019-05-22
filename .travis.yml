@@ -75,7 +75,7 @@ matrix:
 script:
   - cargo clean --verbose
   - cargo build --verbose
-  - cargo test --verbose
+  - LD_LIBRARY_PATH=/usr/local/lib cargo test --verbose
 
 after_success: |
   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
