@@ -17,19 +17,23 @@ matrix:
 before_install: |
   set -x
   # Install ubuntu dependencies
-  sudo apt install libwebp-dev libtiff-dev
-  sudo apt install libvorbis-dev libflac-dev libfluidsynth-dev libmodplug-dev
+  #sudo apt install libwebp-dev libtiff-dev
+  #sudo apt install libvorbis-dev libflac-dev libfluidsynth-dev libmodplug-dev
 
   # Download source archives
-  wget https://www.libsdl.org/release/SDL2-2.0.9.tar.gz https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-2.0.15.tar.gz
+  # wget https://www.libsdl.org/release/SDL2-2.0.9.tar.gz https://www.libsdl.org/projects/SDL_ttf/release/SDL2_ttf-2.0.15.tar.gz
+  wget https://www.libsdl.org/release/SDL2-2.0.9.tar.gz
 
   # Unpack archives
-  ls SDL2*.tar.gz | xargs -i tar -zxvf {}
+  # ls SDL2*.tar.gz | xargs -i tar -zxvf {}
+  tar -zxvf SDL2-2.0.9.tar.gz
+  ls -alh
 
   # Compile packages
-  ls -d SDL2*/ | xargs -i bash -c "cd {} && ./configure && make"
+  # ls -d SDL2*/ | xargs -i bash -c "cd {} && ./configure && make"
+  cd SDL2-2.0.9 && ./configure && make
   # Install packages
-  ls -d SDL2*/ | xargs -i bash -c "cd {} && sudo make install"
+  # ls -d SDL2*/ | xargs -i bash -c "cd {} && sudo make install"
 
 # before_cache: |
 #   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
