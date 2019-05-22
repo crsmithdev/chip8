@@ -1,7 +1,9 @@
+use std::borrow::Borrow;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
+/*
 #[derive(Copy, Clone)]
 struct CacheKey<K> {
     k: *const K,
@@ -20,9 +22,14 @@ impl<K: PartialEq> PartialEq for CacheKey<K> {
         unsafe { (*self.k).eq(&*other.k) }
     }
 }
+*/
+
+struct CacheValue<V> {
+    v: UnsafeCell<V>,
+}
 
 pub struct RefCache<K, V> {
-    cache: UnsafeCell<HashMap<CacheKey<K>, UnsafeCell<V>>>,
+    cache: UnsafeCell<HashMap<K, CacheValue<V>>>,
 }
 
 impl<K: Eq + Hash, V> RefCache<K, V> {
@@ -34,8 +41,10 @@ impl<K: Eq + Hash, V> RefCache<K, V> {
 
     pub fn put<'a>(&'a self, key: K, value: V) {
         let cache = unsafe { &mut *self.cache.get() };
-        let c_key = CacheKey { k: &key };
-        cache.insert(c_key, UnsafeCell::new(value));
+        let c_value = CacheValue {
+            v: UnsafeCell::new(value),
+        };
+        cache.insert(key, c_value);
     }
 
     pub fn get<'a>(&'a self, key: &K) -> Option<&'a V> {
@@ -48,7 +57,6 @@ impl<K: Eq + Hash, V> RefCache<K, V> {
 
     fn get_inner<'a>(&'a self, key: &K) -> Option<&'a UnsafeCell<V>> {
         let cache = unsafe { &*self.cache.get() };
-        let c_key = CacheKey { k: key };
-        cache.get(&c_key)
+        cache.get(&key).map(|value| &value.v)
     }
 }
