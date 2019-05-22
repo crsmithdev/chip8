@@ -37,8 +37,7 @@ before_install: |
   make
   sudo make install
 
-  ls /usr/local/lib
-  ls /usr/local/lib | grep sdl
+  ls -alh /usr/local/lib
 
 
   # Compile packages
