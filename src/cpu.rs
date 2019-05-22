@@ -572,10 +572,15 @@ impl Chip8State {
 
 #[cfg(test)]
 mod tests {
-    //use super::*;
+    use super::*;
 
     #[test]
-    fn it_adds_two() {
-        // assert_eq!(4, add_two(2));
+    fn test_key_press_release() {
+        let mut cpu = Chip8::new();
+        assert_eq!(cpu.state().keys[1], false);
+        cpu.press_key(1);
+        assert_eq!(cpu.state().keys[1], true);;
+        cpu.release_key(1);
+        assert_eq!(cpu.state().keys[1], false);;
     }
 }

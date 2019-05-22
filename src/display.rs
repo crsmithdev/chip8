@@ -39,7 +39,7 @@ lazy_static! {
     static ref REGISTER_FRAME: Rect = Rect::new(740, 815, 790, 317);
 }
 
-pub type TextureCache = RefCache<Texture>;
+pub type TextureCache = RefCache<String, Texture>;
 type ContextRef<'a> = Rc<Context<'a>>;
 
 macro_rules! text {
@@ -48,7 +48,7 @@ macro_rules! text {
         $({
             let key = format!("{}|{}", $text, $style);
             let text: String = if $text == "" { " ".to_string() } else { $text };
-            let texture = $context.cache.get_or_else(&key, || {
+            let texture = $context.cache.get_or_else(key, || {
                 let color = $style.color();
                 let surface = $context.font.render(&text).blended(color).unwrap();
                 let creator = canvas.texture_creator();
@@ -84,7 +84,7 @@ impl Renderable for Screen {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        let screen = context.cache.get_mut_or_else("screen", || {
+        let screen = context.cache.get_mut_or_else("screen".to_owned(), || {
             canvas
                 .texture_creator()
                 .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)

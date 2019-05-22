@@ -1,22 +1,18 @@
+use cpu::{Chip8, Chip8State};
+use display::{Display, TextureCache};
+use logger::Logger;
+use nfd::Response;
+use rom;
+use sdl2::event::Event;
+use sdl2::keyboard::Keycode;
+use sdl2::ttf::Sdl2TtfContext;
+use sdl2::{EventPump, Sdl};
 use std::cmp::{max, min};
 use std::env::current_dir;
 use std::fs::File;
 use std::io::Read;
 use std::thread;
 use std::time::{Duration, SystemTime};
-
-use logger::Logger;
-use nfd::Response;
-use sdl2::event::Event;
-use sdl2::keyboard::Keycode;
-use sdl2::render::Texture;
-use sdl2::ttf::Sdl2TtfContext;
-use sdl2::{EventPump, Sdl};
-
-use cache::RefCache;
-use cpu::{Chip8, Chip8State};
-use display::Display;
-use rom;
 
 const HZ_MAX: u32 = 2000;
 const HZ_DEFAULT: u32 = 500;
@@ -25,7 +21,7 @@ pub struct VMArgs<'a> {
     pub sdl: &'a Sdl,
     pub ttf: &'a Sdl2TtfContext,
     pub log: &'static Logger,
-    pub cache: &'a RefCache<Texture>,
+    pub cache: &'a TextureCache,
 }
 
 #[derive(Copy, Clone, PartialEq)]
