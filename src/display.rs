@@ -48,12 +48,13 @@ macro_rules! text {
         $({
             let key = format!("{}|{}", $text, $style);
             let text: String = if $text == "" { " ".to_string() } else { $text };
-            let texture = $context.cache.get_or_else(key, || {
+            let texture = $context.cache.get(&key).unwrap_or_else(|| {
                 let color = $style.color();
                 let surface = $context.font.render(&text).blended(color).unwrap();
                 let creator = canvas.texture_creator();
                 let texture = creator.create_texture_from_surface(&surface).unwrap();
-                texture
+                $context.cache.put(key.clone(), texture);
+                $context.cache.get(&key).unwrap()
             });
             let query = texture.query();
             let rect = Rect::new($x, $y, query.width, query.height);
@@ -84,12 +85,17 @@ impl Renderable for Screen {
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let mut canvas = context.canvas.borrow_mut();
-        let screen = context.cache.get_mut_or_else("screen".to_owned(), || {
-            canvas
-                .texture_creator()
-                .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
-                .unwrap()
-        });
+        let screen = context
+            .cache
+            .get_mut(&"screen".to_owned())
+            .unwrap_or_else(|| {
+                let texture = canvas
+                    .texture_creator()
+                    .create_texture_streaming(PixelFormatEnum::RGB24, 64, 32)
+                    .unwrap();
+                context.cache.put("screen".to_owned(), texture);
+                context.cache.get_mut(&"screen".to_owned()).unwrap()
+            });
 
         screen
             .with_lock(None, |buffer: &mut [u8], _: usize| {

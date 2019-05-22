@@ -21,11 +21,6 @@ impl<K: PartialEq> PartialEq for CacheKey<K> {
     }
 }
 
-struct CacheValue<K, V> {
-    k: K,
-    v: V,
-}
-
 pub struct RefCache<K, V> {
     cache: UnsafeCell<HashMap<CacheKey<K>, UnsafeCell<V>>>,
 }
@@ -39,49 +34,21 @@ impl<K: Eq + Hash, V> RefCache<K, V> {
 
     pub fn put<'a>(&'a self, key: K, value: V) {
         let cache = unsafe { &mut *self.cache.get() };
-        let k = CacheKey { k: &key };
-        cache.insert(k, UnsafeCell::new(value));
+        let c_key = CacheKey { k: &key };
+        cache.insert(c_key, UnsafeCell::new(value));
     }
 
     pub fn get<'a>(&'a self, key: &K) -> Option<&'a V> {
-        let cache = unsafe { &*self.cache.get() };
-        let k = CacheKey { k: key };
-        cache.get(&k).map(|cell| unsafe { &*cell.get() })
+        self.get_inner(key).map(|cell| unsafe { &*cell.get() })
     }
 
-    pub fn get_or_else<'a, F: FnOnce() -> V>(&'a self, key: K, default: F) -> &'a V {
-        let cache = unsafe { &*self.cache.get() };
-        let k = CacheKey { k: &key };
-        let k2 = CacheKey { k: &key };
-        match cache.get(&k) {
-            Some(cell) => unsafe { &*cell.get() },
-            None => {
-                let created = default();
-                self.put(key, created);
-                let cell = cache.get(&k2).unwrap();
-                unsafe { &*cell.get() }
-            }
-        }
+    pub fn get_mut<'a>(&'a self, key: &K) -> Option<&'a mut V> {
+        self.get_inner(key).map(|cell| unsafe { &mut *cell.get() })
     }
 
-    pub fn get_mut<'a>(&'a self, key: K) -> Option<&'a mut V> {
+    fn get_inner<'a>(&'a self, key: &K) -> Option<&'a UnsafeCell<V>> {
         let cache = unsafe { &*self.cache.get() };
-        let k = CacheKey { k: &key };
-        cache.get(&k).map(|cell| unsafe { &mut *cell.get() })
-    }
-
-    pub fn get_mut_or_else<'a, F: FnOnce() -> V>(&'a self, key: K, default: F) -> &'a mut V {
-        let cache = unsafe { &*self.cache.get() };
-        let k = CacheKey { k: &key };
-        let k2 = CacheKey { k: &key };
-        match cache.get(&k) {
-            Some(cell) => unsafe { &mut *cell.get() },
-            None => {
-                let mut created = default();
-                self.put(key, created);
-                let cell = cache.get(&k2).unwrap();
-                unsafe { &mut *cell.get() }
-            }
-        }
+        let c_key = CacheKey { k: key };
+        cache.get(&c_key)
     }
 }
