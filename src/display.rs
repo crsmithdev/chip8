@@ -18,7 +18,7 @@ use vm::VMState2;
 const WINDOW_WIDTH: u32 = 1024;
 const WINDOW_HEIGHT: u32 = 576;
 const FONT_SIZE: u16 = 28;
-const FONT_SPACING: i32 = 43;
+const LINE_HEIGHT: i32 = 43;
 const N_MESSAGES: usize = 7;
 const N_INSTRUCTIONS: usize = 25;
 
@@ -47,7 +47,7 @@ macro_rules! text {
         let mut canvas = $context.canvas.borrow_mut();
         $({
             let key = format!("{}|{}", $text, $style);
-            let text: String = if $text == "" { " ".to_string() } else { $text };
+            let text: String = if $text == "" { " ".to_owned() } else { $text.to_owned() };
             let texture = $context.cache.get(&key).unwrap_or_else(|| {
                 let color = $style.color();
                 let surface = $context.font.render(&text).blended(color).unwrap();
@@ -70,6 +70,36 @@ macro_rules! panel {
     };
 }
 
+#[derive(Debug)]
+pub enum Style {
+    Default,
+    Address,
+    Instruction,
+}
+
+impl Style {
+    fn color(&self) -> Color {
+        match self {
+            Style::Default => *TEXT_COLOR,
+            Style::Address => *ADDR_COLOR,
+            Style::Instruction => *INST_COLOR,
+        }
+    }
+}
+
+impl fmt::Display for Style {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+struct Context<'a> {
+    cache: &'a TextureCache,
+    canvas: Rc<RefCell<Canvas<Window>>>,
+    log: &'static Logger,
+    font: Font<'a, 'static>,
+}
+
 pub struct Screen {}
 
 impl Screen {
@@ -78,7 +108,8 @@ impl Screen {
     }
 }
 
-impl Renderable for Screen {
+impl Component for Screen {
+    #[inline(always)]
     fn rect(&self) -> Rect {
         *SCREEN_FRAME
     }
@@ -128,20 +159,21 @@ pub struct Instructions {
 
 impl Instructions {
     fn new() -> Instructions {
-        Instructions { offset: 512 }
+        Instructions {
+            offset: Chip8::PROGRAM_START,
+        }
     }
 }
 
-impl Renderable for Instructions {
+impl Component for Instructions {
     fn rect(&self) -> Rect {
         *INSTRUCTION_FRAME
     }
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
-        let rect = self.rect();
         let cpu = &state.cpu;
-        let x = rect.left() + 20;
-        let mut y = rect.top() + 20;
+        let x = self.rect().left() + 20;
+        let mut y = self.rect().top() + 20;
 
         if cpu.pc < self.offset + 4 || cpu.pc > self.offset + N_INSTRUCTIONS * 2 - 4 {
             self.offset = cpu.pc - 4;
@@ -151,8 +183,8 @@ impl Renderable for Instructions {
             let address = self.offset + i * 2;
 
             if cpu.pc == address {
-                let width = rect.width() - 20;
-                let rect = Rect::new(x - 10, y - 3, width, FONT_SPACING as u32);
+                let width = self.rect().width() - 20;
+                let rect = Rect::new(x - 10, y - 3, width, LINE_HEIGHT as u32);
                 let mut canvas = context.canvas.borrow_mut();
                 canvas.set_draw_color(*HIGHLIGHT_COLOR);
                 canvas.fill_rect(rect).unwrap();
@@ -168,7 +200,7 @@ impl Renderable for Instructions {
                 Style::Default     => x + 280, y => result.params
             });
 
-            y += FONT_SPACING;
+            y += LINE_HEIGHT;
         }
     }
 }
@@ -181,18 +213,14 @@ impl Registers {
     }
 }
 
-impl Renderable for Registers {
+impl Component for Registers {
     fn rect(&self) -> Rect {
         *REGISTER_FRAME
     }
 
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         let rect = self.rect();
-        let default = Style::Default;
-        let address = Style::Address;
-        let instruction = Style::Instruction;
-        let spacing = FONT_SPACING;
-        let vm = &state.cpu;
+        let cpu = &state.cpu;
 
         let mut x = rect.left() + 20;
         let separator = Rect::new(rect.left() + 20, rect.top() + 110, rect.width() - 40, 5);
@@ -206,13 +234,13 @@ impl Renderable for Registers {
             let mut y = rect.top() + 135;
             for row in 0..4 {
                 let i = col * 4 + row;
-                let v = vm.v[i];
+                let v = cpu.v[i];
                 text!(context {
-                    default     => x,       y => format!("V{:X}", i)
-                    address     => x + 60,  y => format!("{:02X}", v)
-                    instruction => x + 100, y => format!("({})", v)
+                    Style::Default     => x,       y => format!("V{:X}", i)
+                    Style::Address     => x + 60,  y => format!("{:02X}", v)
+                    Style::Instruction => x + 100, y => format!("({})", v)
                 });
-                y += spacing;
+                y += LINE_HEIGHT;
             }
             x += 200;
         }
@@ -221,20 +249,20 @@ impl Renderable for Registers {
         let y = rect.top() + 10;
 
         text!(context {
-            default => x,       y      => "PC".to_owned()
-            address => x + 60,  y      => format!("{:04X}", vm.pc)
-            default => x + 200, y      => "ST".to_owned()
-            address => x + 260, y      => format!("{:02X}", vm.st)
-            default => x + 400, y      => "DT".to_owned()
-            address => x + 460, y      => format!("{:02X}", vm.dt)
-            default => x + 600, y      => "SP".to_owned()
-            address => x + 660, y      => format!("{:02X}", vm.sp)
-            default => x,       y + 40 => "I".to_owned()
-            address => x + 60,  y + 40 => format!("{:04X }", vm.i)
-            default => x + 200, y + 40 => "HZ".to_owned()
-            address => x + 260, y + 40 => format!("{:04}", state.hz)
-            default => x + 400, y + 40 => "FPS".to_owned()
-            address => x + 460, y + 40 => format!("{:02}", state.fps)
+            Style::Default => x,       y      => "PC"
+            Style::Address => x + 60,  y      => format!("{:04X}", cpu.pc)
+            Style::Default => x + 200, y      => "ST"
+            Style::Address => x + 260, y      => format!("{:02X}", cpu.st)
+            Style::Default => x + 400, y      => "DT"
+            Style::Address => x + 460, y      => format!("{:02X}", cpu.dt)
+            Style::Default => x + 600, y      => "SP"
+            Style::Address => x + 660, y      => format!("{:02X}", cpu.sp)
+            Style::Default => x,       y + 40 => "I"
+            Style::Address => x + 60,  y + 40 => format!("{:04X }", cpu.i)
+            Style::Default => x + 200, y + 40 => "HZ"
+            Style::Address => x + 260, y + 40 => format!("{:04}", state.hz)
+            Style::Default => x + 400, y + 40 => "FPS"
+            Style::Address => x + 460, y + 40 => format!("{:02}", state.fps)
         });
     }
 }
@@ -251,14 +279,13 @@ impl Log {
     }
 }
 
-impl Renderable for Log {
+impl Component for Log {
     fn rect(&self) -> Rect {
         *LOG_FRAME
     }
 
     fn render(&mut self, context: ContextRef, _state: &VMState2) {
         let font = Style::Default;
-        let rect = self.rect();
         if context.log.unread() > 0 {
             let read = context.log.read();
             self.messages.extend(read);
@@ -267,24 +294,26 @@ impl Renderable for Log {
             }
         }
 
-        let mut y = rect.top() + 10;
+        let mut y = self.rect().top() + 10;
         for message in &self.messages {
             text!(context {
-                font => rect.left() + 20, y => message.to_owned()
+                font => self.rect().left() + 20, y => message.to_owned()
             });
-            y += FONT_SPACING;
+            y += LINE_HEIGHT;
         }
     }
 }
 
-trait Renderable {
+trait Component {
     fn render(&mut self, context: ContextRef, state: &VMState2);
+
+    #[inline(always)]
     fn rect(&self) -> Rect;
 }
 
-struct Panel(Box<Renderable>);
+struct Panel(Box<Component>);
 
-impl Renderable for Panel {
+impl Component for Panel {
     fn render(&mut self, context: ContextRef, state: &VMState2) {
         {
             let mut canvas = context.canvas.borrow_mut();
@@ -298,36 +327,6 @@ impl Renderable for Panel {
     fn rect(&self) -> Rect {
         self.0.rect()
     }
-}
-
-#[derive(Debug)]
-pub enum Style {
-    Default,
-    Address,
-    Instruction,
-}
-
-impl Style {
-    fn color(&self) -> Color {
-        match self {
-            Style::Default => *TEXT_COLOR,
-            Style::Address => *ADDR_COLOR,
-            Style::Instruction => *INST_COLOR,
-        }
-    }
-}
-
-impl fmt::Display for Style {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
-struct Context<'a> {
-    cache: &'a TextureCache,
-    canvas: Rc<RefCell<Canvas<Window>>>,
-    log: &'static Logger,
-    font: Font<'a, 'static>,
 }
 
 pub struct Display<'a> {

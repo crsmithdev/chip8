@@ -1,31 +1,10 @@
-use std::borrow::Borrow;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::hash::Hash;
 
-/*
-#[derive(Copy, Clone)]
-struct CacheKey<K> {
-    k: *const K,
-}
-
-impl<K: Eq> Eq for CacheKey<K> {}
-
-impl<K: Hash> Hash for CacheKey<K> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        unsafe { (*self.k).hash(state) }
-    }
-}
-
-impl<K: PartialEq> PartialEq for CacheKey<K> {
-    fn eq(&self, other: &CacheKey<K>) -> bool {
-        unsafe { (*self.k).eq(&*other.k) }
-    }
-}
-*/
-
 struct CacheValue<V> {
     v: UnsafeCell<V>,
+    // TODO LRU pointers
 }
 
 pub struct RefCache<K, V> {

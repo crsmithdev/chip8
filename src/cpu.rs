@@ -5,7 +5,6 @@ use std::error::Error;
 use std::fmt;
 use std::string::String;
 
-const PROGRAM_START: usize = 512;
 const MEMORY_SIZE: usize = 4096;
 const VIDEO_SIZE: usize = 256;
 const MAX_PROGRAM_SIZE: usize = 3584;
@@ -50,17 +49,19 @@ pub struct Chip8 {
 
 #[allow(dead_code)]
 impl Chip8 {
+    pub const PROGRAM_START: usize = 512;
+
     pub fn new() -> Chip8 {
         Chip8 {
             state: Chip8State {
-                pc: PROGRAM_START,
+                pc: Self::PROGRAM_START,
                 sp: 0,
                 memory: [0; MEMORY_SIZE],
                 stack: [0; STACK_SIZE],
                 video: [0; VIDEO_SIZE],
                 keys: [false; 16],
                 v: [0; 16],
-                i: PROGRAM_START as u16,
+                i: Self::PROGRAM_START as u16,
                 dt: 0,
                 st: 0,
                 error: None,
@@ -129,9 +130,9 @@ impl Chip8 {
     pub fn soft_reset(&mut self) {
         let state = &mut self.state;
 
-        state.pc = PROGRAM_START;
+        state.pc = Self::PROGRAM_START;
         state.sp = 0;
-        state.i = PROGRAM_START as u16;
+        state.i = Self::PROGRAM_START as u16;
         state.dt = 0;
         state.st = 0;
         state.error = None;
@@ -172,7 +173,7 @@ impl Chip8 {
         }
 
         for i in 0..bytes.len() {
-            cpu.memory[i + PROGRAM_START] = bytes[i];
+            cpu.memory[i + Self::PROGRAM_START] = bytes[i];
         }
 
         Ok(())
