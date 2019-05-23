@@ -32,33 +32,34 @@ pub enum CPUState {
     OneStep,
 }
 
-pub struct VMState {
-    pub cpu: Chip8,
+pub struct RunState {
     pub cpu_state: CPUState,
     pub last_step: SystemTime,
     pub fps: i32,
     pub hz: u32,
 }
 
-pub struct VMState2<'a> {
+pub struct UpdateState<'a> {
     pub cpu: &'a Chip8State,
-    pub fps: i32,
-    pub hz: u32,
+    pub run: &'a RunState,
 }
 
 pub struct VM<'a> {
+    pub cpu: Chip8,
     display: Display<'a>,
     events: EventPump,
-    state: VMState,
+    state: RunState,
 }
 
 impl<'a> VM<'a> {
     pub fn new(args: VMArgs<'a>) -> VM<'a> {
+        let chip8 = Chip8::new();
+
         VM {
             display: Display::new(args.sdl, args.ttf, args.log, args.cache),
             events: args.sdl.event_pump().unwrap(),
-            state: VMState {
-                cpu: Chip8::new(),
+            cpu: chip8,
+            state: RunState {
                 cpu_state: CPUState::Stopped,
                 last_step: SystemTime::UNIX_EPOCH,
                 hz: HZ_DEFAULT,
@@ -68,7 +69,7 @@ impl<'a> VM<'a> {
     }
 
     pub fn start(&mut self) {
-        self.state.cpu.load_bytes(&rom::BOOT).unwrap();
+        self.cpu.load_bytes(&rom::BOOT).unwrap();
         //info!("Loaded {} bytes", bytes);
 
         let mut fps = FPSCounter::new(60);
@@ -84,7 +85,7 @@ impl<'a> VM<'a> {
 
             if cycles > 0 {
                 for _ in 0..cycles {
-                    if let Err(err) = self.state.cpu.execute_cycle() {
+                    if let Err(err) = self.cpu.execute_cycle() {
                         error!("CPU Error: {}", err);
                         self.state.cpu_state = CPUState::Paused;
                     }
@@ -98,10 +99,9 @@ impl<'a> VM<'a> {
 
             self.state.fps = fps.fps() as i32;
             //self.display.update(&self.state);
-            self.display.update(&VMState2 {
-                cpu: self.state.cpu.state(),
-                hz: self.state.hz,
-                fps: self.state.fps,
+            self.display.update(&UpdateState {
+                cpu: self.cpu.state(),
+                run: &self.state,
             });
 
             let mut delay = fps.frame();
@@ -184,8 +184,8 @@ impl<'a> VM<'a> {
                 let mut file = File::open(file_path).unwrap();
                 let mut bytes = Vec::new();
                 file.read_to_end(&mut bytes).unwrap();
-                self.state.cpu.hard_reset();
-                self.state.cpu.load_bytes(&bytes).unwrap();
+                self.cpu.hard_reset();
+                self.cpu.load_bytes(&bytes).unwrap();
             }
             Response::OkayMultiple(files) => println!("Files {:?}", files),
             Response::Cancel => println!("User canceled"),
@@ -193,11 +193,11 @@ impl<'a> VM<'a> {
     }
 
     fn key_down(&mut self, k: usize) {
-        self.state.cpu.press_key(k);
+        self.cpu.press_key(k);
     }
 
     fn key_up(&mut self, k: usize) {
-        self.state.cpu.release_key(k);
+        self.cpu.release_key(k);
     }
 
     fn dec_hz(&mut self) {

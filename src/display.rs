@@ -13,7 +13,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
-use vm::VMState2;
+use vm::UpdateState;
 
 const WINDOW_WIDTH: u32 = 1024;
 const WINDOW_HEIGHT: u32 = 576;
@@ -24,19 +24,19 @@ const N_INSTRUCTIONS: usize = 25;
 
 lazy_static! {
     static ref FONT_PATH: &'static Path = Path::new("../../resources/SourceCodePro-Semibold.ttf");
-    static ref TEXT_COLOR: Color = Color::RGBA(166, 172, 205, 0xFF);
-    static ref ADDR_COLOR: Color = Color::RGBA(130, 170, 255, 255);
-    static ref INST_COLOR: Color = Color::RGBA(198, 146, 233, 255);
-    static ref BG_COLOR: Color = Color::RGBA(27, 31, 43, 0xFF);
-    static ref PANEL_COLOR: Color = Color::RGBA(42, 46, 62, 0xFF);
-    static ref HIGHLIGHT_COLOR: Color = Color::RGBA(27, 31, 43, 255);
-    static ref SCREEN_OFF_COLOR: Color = Color::RGBA(0x8F, 0x91, 0x85, 0xFF);
-    static ref SCREEN_ON_COLOR: Color = Color::RGBA(0x11, 0x13, 0x2B, 0xFF);
-    static ref SCREEN_TARGET: Rect = Rect::new(40, 40, 1470, 735);
-    static ref SCREEN_FRAME: Rect = Rect::new(20, 20, 1510, 775);
-    static ref LOG_FRAME: Rect = Rect::new(20, 815, 700, 317);
-    static ref INSTRUCTION_FRAME: Rect = Rect::new(1550, 20, 478, 1112);
-    static ref REGISTER_FRAME: Rect = Rect::new(740, 815, 790, 317);
+    static ref COLOR_DEFAULT: Color = Color::RGBA(166, 172, 205, 0xFF);
+    static ref COLOR_BLUE: Color = Color::RGBA(130, 170, 255, 255);
+    static ref COLOR_MAGENTA: Color = Color::RGBA(198, 146, 233, 255);
+    static ref COLOR_BG: Color = Color::RGBA(27, 31, 43, 0xFF);
+    static ref COLOR_PANEL: Color = Color::RGBA(42, 46, 62, 0xFF);
+    static ref COLOR_HIGHLIGHT: Color = Color::RGBA(27, 31, 43, 255);
+    static ref COLOR_PX_OFF: Color = Color::RGBA(0x8F, 0x91, 0x85, 0xFF);
+    static ref COLOR_PX_ON: Color = Color::RGBA(0x11, 0x13, 0x2B, 0xFF);
+    static ref RECT_SCREEN_TARGET: Rect = Rect::new(40, 40, 1470, 735);
+    static ref RECT_SCREEN: Rect = Rect::new(20, 20, 1510, 775);
+    static ref RECT_LOG: Rect = Rect::new(20, 815, 700, 317);
+    static ref RECT_INSTRUCTIONS: Rect = Rect::new(1550, 20, 478, 1112);
+    static ref RECT_REGISTERS: Rect = Rect::new(740, 815, 790, 317);
 }
 
 pub type TextureCache = RefCache<String, Texture>;
@@ -80,9 +80,9 @@ pub enum Style {
 impl Style {
     fn color(&self) -> Color {
         match self {
-            Style::Default => *TEXT_COLOR,
-            Style::Address => *ADDR_COLOR,
-            Style::Instruction => *INST_COLOR,
+            Style::Default => *COLOR_DEFAULT,
+            Style::Address => *COLOR_BLUE,
+            Style::Instruction => *COLOR_MAGENTA,
         }
     }
 }
@@ -100,6 +100,14 @@ struct Context<'a> {
     font: Font<'a, 'static>,
 }
 
+trait Component {
+    #[inline(always)]
+    fn rect(&self) -> Rect;
+
+    fn update(&mut self, context: ContextRef, state: &UpdateState);
+    fn render(&mut self, context: ContextRef, state: &UpdateState);
+}
+
 pub struct Screen {}
 
 impl Screen {
@@ -111,10 +119,12 @@ impl Screen {
 impl Component for Screen {
     #[inline(always)]
     fn rect(&self) -> Rect {
-        *SCREEN_FRAME
+        *RECT_SCREEN
     }
 
-    fn render(&mut self, context: ContextRef, state: &VMState2) {
+    fn update(&mut self, _ctx: ContextRef, _state: &UpdateState) {}
+
+    fn render(&mut self, context: ContextRef, state: &UpdateState) {
         let mut canvas = context.canvas.borrow_mut();
         let screen = context
             .cache
@@ -137,8 +147,8 @@ impl Component for Screen {
                     for bit_offset in 0..8 {
                         let i = (byte_offset * 8 * 3) + (bit_offset * 3);
                         let color = match byte & (1 << (7 - bit_offset)) {
-                            0 => *SCREEN_OFF_COLOR,
-                            _ => *SCREEN_ON_COLOR,
+                            0 => *COLOR_PX_OFF,
+                            _ => *COLOR_PX_ON,
                         };
 
                         buffer[i] = color.r;
@@ -149,48 +159,64 @@ impl Component for Screen {
             })
             .unwrap();
 
-        canvas.copy(&screen, None, Some(*SCREEN_TARGET)).unwrap();
+        canvas
+            .copy(&screen, None, Some(*RECT_SCREEN_TARGET))
+            .unwrap();
     }
 }
 
 pub struct Instructions {
     offset: usize,
+    instructions: [u16; N_INSTRUCTIONS],
+    highlighted: usize,
 }
 
 impl Instructions {
     fn new() -> Instructions {
         Instructions {
             offset: Chip8::PROGRAM_START,
+            instructions: [0; N_INSTRUCTIONS],
+            highlighted: 0,
         }
     }
 }
 
 impl Component for Instructions {
     fn rect(&self) -> Rect {
-        *INSTRUCTION_FRAME
+        *RECT_INSTRUCTIONS
     }
 
-    fn render(&mut self, context: ContextRef, state: &VMState2) {
+    fn update(&mut self, _ctx: ContextRef, state: &UpdateState) {
         let cpu = &state.cpu;
-        let x = self.rect().left() + 20;
-        let mut y = self.rect().top() + 20;
-
         if cpu.pc < self.offset + 4 || cpu.pc > self.offset + N_INSTRUCTIONS * 2 - 4 {
             self.offset = cpu.pc - 4;
         }
+        for i in 0..N_INSTRUCTIONS {
+            let address = self.offset + i * 2;
+            let inst = cpu.fetch(address as u16);
+            self.instructions[i] = inst;
+            if state.cpu.pc == address {
+                self.highlighted = address;
+            };
+        }
+    }
+
+    fn render(&mut self, context: ContextRef, _state: &UpdateState) {
+        let x = self.rect().left() + 20;
+        let mut y = self.rect().top() + 20;
 
         for i in 0..N_INSTRUCTIONS {
             let address = self.offset + i * 2;
+            let inst = self.instructions[i];
 
-            if cpu.pc == address {
+            if self.highlighted == address {
                 let width = self.rect().width() - 20;
                 let rect = Rect::new(x - 10, y - 3, width, LINE_HEIGHT as u32);
                 let mut canvas = context.canvas.borrow_mut();
-                canvas.set_draw_color(*HIGHLIGHT_COLOR);
+                canvas.set_draw_color(*COLOR_HIGHLIGHT);
                 canvas.fill_rect(rect).unwrap();
             }
 
-            let inst = cpu.fetch(address as u16);
             let result = Chip8::disassemble(inst);
 
             text!(context {
@@ -205,28 +231,56 @@ impl Component for Instructions {
     }
 }
 
-pub struct Registers {}
+pub struct Registers {
+    pub v: [u8; 16],
+    pub pc: usize,
+    pub sp: usize,
+    pub i: u16,
+    pub dt: u8,
+    pub st: u8,
+    pub hz: u32,
+    pub fps: i32,
+}
 
 impl Registers {
     fn new() -> Registers {
-        Registers {}
+        Registers {
+            pc: 0,
+            sp: 0,
+            v: [0; 16],
+            i: 0,
+            dt: 0,
+            st: 0,
+            hz: 0,
+            fps: 0,
+        }
     }
 }
 
 impl Component for Registers {
     fn rect(&self) -> Rect {
-        *REGISTER_FRAME
+        *RECT_REGISTERS
     }
 
-    fn render(&mut self, context: ContextRef, state: &VMState2) {
-        let rect = self.rect();
-        let cpu = &state.cpu;
+    fn update(&mut self, _ctx: ContextRef, state: &UpdateState) {
+        self.pc = state.cpu.pc;
+        self.sp = state.cpu.sp;
+        self.i = state.cpu.i;
+        self.dt = state.cpu.dt;
+        self.st = state.cpu.st;
+        self.fps = state.run.fps;
+        self.hz = state.run.hz;
+        self.v.clone_from_slice(&state.cpu.v);
+    }
 
+    fn render(&mut self, context: ContextRef, _state: &UpdateState) {
+        let rect = self.rect();
         let mut x = rect.left() + 20;
         let separator = Rect::new(rect.left() + 20, rect.top() + 110, rect.width() - 40, 5);
+
         {
             let mut canvas = context.canvas.borrow_mut();
-            canvas.set_draw_color(*BG_COLOR);
+            canvas.set_draw_color(*COLOR_BG);
             canvas.fill_rect(separator).unwrap();
         }
 
@@ -234,7 +288,7 @@ impl Component for Registers {
             let mut y = rect.top() + 135;
             for row in 0..4 {
                 let i = col * 4 + row;
-                let v = cpu.v[i];
+                let v = self.v[i];
                 text!(context {
                     Style::Default     => x,       y => format!("V{:X}", i)
                     Style::Address     => x + 60,  y => format!("{:02X}", v)
@@ -242,6 +296,7 @@ impl Component for Registers {
                 });
                 y += LINE_HEIGHT;
             }
+
             x += 200;
         }
 
@@ -250,19 +305,19 @@ impl Component for Registers {
 
         text!(context {
             Style::Default => x,       y      => "PC"
-            Style::Address => x + 60,  y      => format!("{:04X}", cpu.pc)
+            Style::Address => x + 60,  y      => format!("{:04X}", self.pc)
             Style::Default => x + 200, y      => "ST"
-            Style::Address => x + 260, y      => format!("{:02X}", cpu.st)
+            Style::Address => x + 260, y      => format!("{:02X}", self.st)
             Style::Default => x + 400, y      => "DT"
-            Style::Address => x + 460, y      => format!("{:02X}", cpu.dt)
+            Style::Address => x + 460, y      => format!("{:02X}", self.dt)
             Style::Default => x + 600, y      => "SP"
-            Style::Address => x + 660, y      => format!("{:02X}", cpu.sp)
+            Style::Address => x + 660, y      => format!("{:02X}", self.sp)
             Style::Default => x,       y + 40 => "I"
-            Style::Address => x + 60,  y + 40 => format!("{:04X }", cpu.i)
+            Style::Address => x + 60,  y + 40 => format!("{:04X }", self.i)
             Style::Default => x + 200, y + 40 => "HZ"
-            Style::Address => x + 260, y + 40 => format!("{:04}", state.hz)
+            Style::Address => x + 260, y + 40 => format!("{:04}", self.hz)
             Style::Default => x + 400, y + 40 => "FPS"
-            Style::Address => x + 460, y + 40 => format!("{:02}", state.fps)
+            Style::Address => x + 460, y + 40 => format!("{:02}", self.fps)
         });
     }
 }
@@ -281,18 +336,21 @@ impl Log {
 
 impl Component for Log {
     fn rect(&self) -> Rect {
-        *LOG_FRAME
+        *RECT_LOG
     }
 
-    fn render(&mut self, context: ContextRef, _state: &VMState2) {
-        let font = Style::Default;
-        if context.log.unread() > 0 {
-            let read = context.log.read();
+    fn update(&mut self, ctx: ContextRef, _state: &UpdateState) {
+        if ctx.log.unread() > 0 {
+            let read = ctx.log.read();
             self.messages.extend(read);
             while self.messages.len() > N_MESSAGES {
                 self.messages.pop_front();
             }
         }
+    }
+
+    fn render(&mut self, context: ContextRef, _state: &UpdateState) {
+        let font = Style::Default;
 
         let mut y = self.rect().top() + 10;
         for message in &self.messages {
@@ -304,34 +362,32 @@ impl Component for Log {
     }
 }
 
-trait Component {
-    fn render(&mut self, context: ContextRef, state: &VMState2);
-
-    #[inline(always)]
-    fn rect(&self) -> Rect;
-}
-
 struct Panel(Box<Component>);
 
 impl Component for Panel {
-    fn render(&mut self, context: ContextRef, state: &VMState2) {
+    fn rect(&self) -> Rect {
+        self.0.rect()
+    }
+
+    fn update(&mut self, _ctx: ContextRef, _state: &UpdateState) {
+        self.0.update(_ctx, _state)
+    }
+
+    fn render(&mut self, context: ContextRef, state: &UpdateState) {
         {
             let mut canvas = context.canvas.borrow_mut();
-            canvas.set_draw_color(*PANEL_COLOR);
+            canvas.set_draw_color(*COLOR_PANEL);
             canvas.fill_rect(self.0.rect()).unwrap();
         }
 
         self.0.render(context, state);
-    }
-
-    fn rect(&self) -> Rect {
-        self.0.rect()
     }
 }
 
 pub struct Display<'a> {
     context: ContextRef<'a>,
     panels: Vec<Panel>,
+    frame: u128,
 }
 
 impl<'a> Display<'a> {
@@ -373,24 +429,30 @@ impl<'a> Display<'a> {
         Display {
             context: context.clone(),
             panels: panels,
+            frame: 0,
         }
     }
 
-    pub fn update(&mut self, state: &VMState2) {
+    pub fn update(&mut self, state: &UpdateState) {
         let context = &self.context;
 
         {
             let mut canvas = context.canvas.borrow_mut();
-            canvas.set_draw_color(*BG_COLOR);
+            canvas.set_draw_color(*COLOR_BG);
             canvas.clear();
         }
 
         for p in &mut self.panels {
+            // TODO less awful
+            if self.frame % 7 < 2 {
+                p.update(context.clone(), state);
+            }
             p.render(context.clone(), state);
         }
 
         let mut canvas = self.context.canvas.borrow_mut();
         canvas.present();
+        self.frame += 1;
     }
 
     pub fn focused(&self) -> bool {
