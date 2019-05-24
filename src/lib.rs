@@ -3,6 +3,7 @@ pub mod cpu;
 pub mod display;
 pub mod logger;
 pub mod rom;
+pub mod util;
 pub mod vm;
 
 extern crate sdl2;

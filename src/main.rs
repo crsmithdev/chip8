@@ -3,6 +3,7 @@ mod cpu;
 mod display;
 mod logger;
 mod rom;
+mod util;
 mod vm;
 
 #[macro_use]
@@ -17,16 +18,12 @@ extern crate sdl2_sys;
 use vm::{VMArgs, VM};
 
 fn main() {
-    let log = logger::init();
-    let sdl_context = sdl2::init().unwrap();
-    let ttf_context = sdl2::ttf::init().unwrap();
     let args = VMArgs {
-        sdl: &sdl_context,
-        ttf: &ttf_context,
-        log: &log,
+        sdl: &sdl2::init().unwrap(),
+        ttf: &sdl2::ttf::init().unwrap(),
+        log: &logger::init(),
         cache: &display::TextureCache::new(),
     };
 
-    let mut vm = VM::new(args);
-    vm.start();
+    VM::new(args).start();
 }

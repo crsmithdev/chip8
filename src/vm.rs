@@ -13,9 +13,19 @@ use std::fs::File;
 use std::io::Read;
 use std::thread;
 use std::time::{Duration, SystemTime};
+use util::FPSCounter;
 
 const HZ_MAX: u32 = 2000;
+const HZ_MIN: u32 = 1;
 const HZ_DEFAULT: u32 = 500;
+const FPS_DEFAULT: u32 = 60;
+const DELAY_BG: u64 = 50;
+
+macro_rules! round {
+    ($num:expr, $nearest:expr) => {
+        ($num / $nearest) * $nearest
+    };
+}
 
 pub struct VMArgs<'a> {
     pub sdl: &'a Sdl,
@@ -69,17 +79,18 @@ impl<'a> VM<'a> {
     }
 
     pub fn start(&mut self) {
-        self.cpu.load_bytes(&rom::BOOT).unwrap();
-        //info!("Loaded {} bytes", bytes);
-
-        let mut fps = FPSCounter::new(60);
         self.state.cpu_state = CPUState::Running;
         self.state.last_step = SystemTime::now();
+        let mut fps = FPSCounter::new(FPS_DEFAULT);
 
-        'running: loop {
+        self.cpu.load_bytes(&rom::BOOT).unwrap();
+        info!("Started");
+
+        'runloop: loop {
             if self.state.cpu_state == CPUState::Stopped {
-                break 'running;
+                break 'runloop;
             }
+
             self.handle_events();
             let cycles = self.cycles_since();
 
@@ -98,18 +109,17 @@ impl<'a> VM<'a> {
             }
 
             self.state.fps = fps.fps() as i32;
-            //self.display.update(&self.state);
             self.display.update(&UpdateState {
                 cpu: self.cpu.state(),
                 run: &self.state,
             });
 
-            let mut delay = fps.frame();
-            if self.state.cpu_state == CPUState::Paused || !self.display.focused() {
-                delay = 50;
-            }
+            let delay = fps.frame() as u64;
+            let paused = self.state.cpu_state == CPUState::Paused;
+            let focused = self.display.focused();
+            let ms = delay * if paused || !focused { DELAY_BG } else { 1 };
 
-            thread::sleep(Duration::from_millis(delay as u64));
+            thread::sleep(Duration::from_millis(ms));
         }
     }
 
@@ -125,6 +135,8 @@ impl<'a> VM<'a> {
                     Keycode::LeftBracket => self.dec_hz(),
                     Keycode::RightBracket => self.inc_hz(),
                     Keycode::F1 => self.load_file(),
+                    Keycode::F2 => self.reload(),
+                    Keycode::F3 => self.restart(),
                     Keycode::F5 => self.toggle_pause(),
                     Keycode::F6 => self.state.cpu_state = CPUState::OneStep,
                     Keycode::Num1 => self.key_down(0x1),
@@ -174,22 +186,42 @@ impl<'a> VM<'a> {
 
     fn load_file(&mut self) {
         let current = format!("{}", current_dir().unwrap().display());
-        let result = nfd::open_file_dialog(None, Some(&current)).unwrap_or_else(|e| {
-            panic!(e);
-        });
+        let mut bytes = Vec::new();
 
-        match result {
-            Response::Okay(file_path) => {
-                // TODO errors
-                let mut file = File::open(file_path).unwrap();
-                let mut bytes = Vec::new();
+        match nfd::open_file_dialog(None, Some(&current)) {
+            Err(error) => error!("Error loading file: {}", error),
+            Ok(Response::OkayMultiple(_)) => error!("Multiple files selected"),
+            Ok(Response::Okay(path)) => {
+                let mut file = File::open(path).unwrap();
                 file.read_to_end(&mut bytes).unwrap();
                 self.cpu.hard_reset();
                 self.cpu.load_bytes(&bytes).unwrap();
             }
-            Response::OkayMultiple(files) => println!("Files {:?}", files),
-            Response::Cancel => println!("User canceled"),
-        }
+            _ => (),
+        };
+    }
+
+    fn reload(&mut self) {
+        self.cpu.soft_reset();
+        self.state = RunState {
+            cpu_state: CPUState::Running,
+            last_step: SystemTime::now(),
+            hz: HZ_DEFAULT,
+            fps: 0,
+        };
+        info!("Reloaded");
+    }
+
+    fn restart(&mut self) {
+        self.cpu.load_bytes(&rom::BOOT).unwrap();
+        self.cpu.hard_reset();
+        self.state = RunState {
+            cpu_state: CPUState::Running,
+            last_step: SystemTime::now(),
+            hz: HZ_DEFAULT,
+            fps: 0,
+        };
+        info!("Restarted");
     }
 
     fn key_down(&mut self, k: usize) {
@@ -203,20 +235,21 @@ impl<'a> VM<'a> {
     fn dec_hz(&mut self) {
         let inc = match self.state.hz {
             n if n < 20 => n - 1,
-            n if n >= 20 && n <= 100 => ((n / 10) * 10) - 10,
-            n => ((n / 100) * 100) - 100,
+            n if n <= 100 => round!(n, 10) - 10,
+            n => round!(n, 100) - 100,
         };
 
-        self.state.hz = min(max(inc, 10), HZ_MAX);
+        self.state.hz = min(max(inc, HZ_MIN), HZ_MAX);
     }
 
     fn inc_hz(&mut self) {
         let dec = match self.state.hz {
-            n if n <= 100 => ((n / 10) * 10) + 10,
-            n => ((n / 100) * 100) + 100,
+            n if n < 20 => n + 1,
+            n if n <= 100 => round!(n, 10) + 10,
+            n => round!(n, 100) + 100,
         };
 
-        self.state.hz = min(max(dec, 1), HZ_MAX);
+        self.state.hz = min(max(dec, HZ_MAX), HZ_MAX);
     }
 
     fn toggle_pause(&mut self) {
@@ -248,46 +281,5 @@ impl<'a> VM<'a> {
                 elapsed / ms_per_cycle
             }
         }
-    }
-}
-
-struct FPSCounter {
-    last_frame: SystemTime,
-    last_fps: SystemTime,
-    fps_actual: f32,
-    frames: u32,
-    ms_per_frame: f32,
-}
-
-impl FPSCounter {
-    fn new(fps: u32) -> FPSCounter {
-        FPSCounter {
-            last_frame: SystemTime::now(),
-            last_fps: SystemTime::now(),
-            fps_actual: 0.0,
-            frames: 0,
-            ms_per_frame: 1000.0 / fps as f32,
-        }
-    }
-
-    fn frame(&mut self) -> u32 {
-        let now = SystemTime::now();
-        let delta = now.duration_since(self.last_frame).unwrap().as_millis() as f32;
-        self.frames += 1;
-        self.last_frame = now;
-        (self.ms_per_frame - delta).max(0.0) as u32
-    }
-
-    fn fps(&mut self) -> f32 {
-        let now = SystemTime::now();
-        let delta = now.duration_since(self.last_fps).unwrap().as_millis();
-
-        if delta > 5000 {
-            self.fps_actual = self.frames as f32 / (delta as f32 / 1000.0);
-            self.frames = 0;
-            self.last_fps = now;
-        }
-
-        self.fps_actual
     }
 }
