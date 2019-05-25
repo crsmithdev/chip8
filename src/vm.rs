@@ -201,11 +201,11 @@ impl<'a> VM<'a> {
     }
 
     fn advance(&mut self) {
-        self.state.cpu_state == CPUState::OneStep;
+        self.state.cpu_state = CPUState::OneStep;
     }
 
     fn quit(&mut self) {
-        self.state.cpu_state == CPUState::Stopped;
+        self.state.cpu_state = CPUState::Stopped;
     }
 
     fn reload(&mut self) {

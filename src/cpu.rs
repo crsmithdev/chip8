@@ -320,7 +320,7 @@ impl Chip8State {
             i if i & 0xF00F == 0x8007 => self.subn(x, y),
             i if i & 0xF00F == 0x800E => self.shl(x),
             i if i & 0xF00F == 0x9000 => self.sne_reg(x, y),
-            i if i & 0xF000 == 0xA000 => self.ld_i(addr),
+            i if i & 0xF000 == 0xA000 => self.load_i(addr),
             i if i & 0xF000 == 0xB000 => self.jp_v0(addr),
             i if i & 0xF000 == 0xC000 => self.rnd(x, byte),
             i if i & 0xF000 == 0xD000 => self.drw(x, y, nibble),
@@ -416,7 +416,7 @@ impl Chip8State {
         self.v[x] = self.v[y];
     }
 
-    fn ld_i(&mut self, addr: usize) {
+    fn load_i(&mut self, addr: usize) {
         self.i = addr;
     }
 
@@ -586,6 +586,13 @@ impl Chip8State {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_load_i() {
+        let mut cpu = Chip8::new();
+        cpu.state.load_i(800);
+        assert_eq!(cpu.state.i, 800);
+    }
 
     #[test]
     fn test_add_byte() {

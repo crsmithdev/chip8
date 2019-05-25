@@ -19,6 +19,7 @@ before_install: |
   tar -zxvf SDL2_ttf-2.0.15.tar.gz
   cd SDL2_ttf-2.0.15
   ./configure && make && sudo make install
+  cd ..
 
 before_cache: |
   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
