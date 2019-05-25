@@ -39,6 +39,108 @@ impl Error for Chip8Error {
     }
 }
 
+pub struct Chip8State {
+    pub video: [u8; Chip8::VIDEO_SIZE],
+    pub memory: [u8; Chip8::MEMORY_SIZE],
+    pub v: [u8; 16],
+    pub stack: [u16; 16],
+    pub keys: [bool; 16],
+    pub pc: usize,
+    pub sp: usize,
+    pub i: usize,
+    pub dt: u8,
+    pub st: u8,
+    pub error: Option<Chip8Error>,
+}
+
+impl Default for Chip8State {
+    fn default() -> Self {
+        Chip8State {
+            pc: Self::PROGRAM_START,
+            sp: 0,
+            memory: [0; Self::MEMORY_SIZE],
+            stack: [0; Self::STACK_SIZE],
+            video: [0; Self::VIDEO_SIZE],
+            keys: [false; 16],
+            v: [0; 16],
+            i: Self::PROGRAM_START,
+            dt: 0,
+            st: 0,
+            error: None,
+        }
+    }
+}
+#[allow(dead_code)]
+impl Chip8State {
+    pub const PROGRAM_START: usize = 512;
+
+    const MEMORY_SIZE: usize = 4096;
+    const VIDEO_SIZE: usize = 256;
+    const MAX_PROGRAM_SIZE: usize = 3584;
+    const STACK_SIZE: usize = 16;
+    const N_REGISTERS: usize = 16;
+    const N_KEYS: usize = 16;
+    const PITCH: usize = 8;
+
+    pub fn new() -> Chip8State {
+        Self::default()
+    }
+
+    #[inline(always)]
+    pub fn video(&self) -> &[u8] {
+        &self.video
+    }
+
+    #[inline(always)]
+    pub fn memory(&self) -> &[u8] {
+        &self.memory
+    }
+
+    #[inline(always)]
+    pub fn registers(&self) -> &[u8] {
+        &self.v
+    }
+
+    #[inline(always)]
+    pub fn stack(&self) -> &[u16] {
+        &self.stack
+    }
+
+    #[inline(always)]
+    pub fn i(&self) -> usize {
+        self.i
+    }
+
+    #[inline(always)]
+    pub fn sp(&self) -> usize {
+        self.sp
+    }
+
+    #[inline(always)]
+    pub fn dt(&self) -> u8 {
+        self.dt
+    }
+
+    #[inline(always)]
+    pub fn st(&self) -> u8 {
+        self.st
+    }
+
+    #[inline(always)]
+    pub fn pc(&self) -> usize {
+        self.pc
+    }
+
+    #[inline(always)]
+    pub fn error(&self) -> Option<Chip8Error> {
+        None
+    }
+
+    pub fn fetch(&self, address: u16) -> u16 {
+        (self.memory[address as usize] as u16) << 8 | (self.memory[address as usize + 1] as u16)
+    }
+}
+
 pub struct Chip8 {
     state: Chip8State,
 }
@@ -63,7 +165,6 @@ impl Default for Chip8 {
     }
 }
 
-#[allow(dead_code)]
 impl Chip8 {
     pub const PROGRAM_START: usize = 512;
     const MEMORY_SIZE: usize = 4096;
@@ -193,102 +294,19 @@ impl Chip8 {
     }
 
     pub fn execute_cycle(&mut self) -> Result<(), Chip8Error> {
-        self.state.execute_cycle()
-    }
-}
+        //let pc = self.state.pc;
+        //self.state.v[0xF] = 0;
 
-pub struct Chip8State {
-    pub video: [u8; Chip8::VIDEO_SIZE],
-    pub memory: [u8; Chip8::MEMORY_SIZE],
-    pub v: [u8; 16],
-    pub stack: [u16; 16],
-    pub keys: [bool; 16],
-    pub pc: usize,
-    pub sp: usize,
-    pub i: usize,
-    pub dt: u8,
-    pub st: u8,
-    pub error: Option<Chip8Error>,
-}
-
-#[allow(dead_code)]
-impl Chip8State {
-    const MEMORY_SIZE: usize = 4096;
-    const VIDEO_SIZE: usize = 256;
-    const MAX_PROGRAM_SIZE: usize = 3584;
-    const STACK_SIZE: usize = 16;
-    const N_REGISTERS: usize = 16;
-    const N_KEYS: usize = 16;
-    const PITCH: usize = 8;
-
-    #[inline(always)]
-    pub fn video(&self) -> &[u8] {
-        &self.video
-    }
-
-    #[inline(always)]
-    pub fn memory(&self) -> &[u8] {
-        &self.memory
-    }
-
-    #[inline(always)]
-    pub fn registers(&self) -> &[u8] {
-        &self.v
-    }
-
-    #[inline(always)]
-    pub fn stack(&self) -> &[u16] {
-        &self.stack
-    }
-
-    #[inline(always)]
-    pub fn i(&self) -> usize {
-        self.i
-    }
-
-    #[inline(always)]
-    pub fn sp(&self) -> usize {
-        self.sp
-    }
-
-    #[inline(always)]
-    pub fn dt(&self) -> u8 {
-        self.dt
-    }
-
-    #[inline(always)]
-    pub fn st(&self) -> u8 {
-        self.st
-    }
-
-    #[inline(always)]
-    pub fn pc(&self) -> usize {
-        self.pc
-    }
-
-    #[inline(always)]
-    pub fn error(&self) -> Option<Chip8Error> {
-        None
-    }
-
-    pub fn fetch(&self, address: u16) -> u16 {
-        (self.memory[address as usize] as u16) << 8 | (self.memory[address as usize + 1] as u16)
-    }
-
-    pub fn execute_cycle(&mut self) -> Result<(), Chip8Error> {
-        //let pc = self.pc;
-        //self.v[0xF] = 0;
-
-        if self.dt > 0 {
-            self.dt -= 1;
+        if self.state.dt > 0 {
+            self.state.dt -= 1;
         }
 
-        if self.st > 0 {
-            self.st -= 1;
+        if self.state.st > 0 {
+            self.state.st -= 1;
         }
 
-        let instruction: u16 = self.fetch(self.pc as u16);
-        self.pc += 2;
+        let instruction: u16 = self.state.fetch(self.state.pc as u16);
+        self.state.pc += 2;
 
         self.execute(instruction)
     }
@@ -342,188 +360,188 @@ impl Chip8State {
     }
 
     fn cls(&mut self) {
-        for i in 0..self.video.len() {
-            self.video[i] = 0;
+        for i in 0..self.state.video.len() {
+            self.state.video[i] = 0;
         }
     }
 
     fn ret(&mut self) {
-        self.error = match self.sp {
+        self.state.error = match self.state.sp {
             p if p == 0 => Some(Chip8Error::StackUnderflowError),
             _ => {
-                self.sp -= 1;
-                self.pc = self.stack[self.sp] as usize;
+                self.state.sp -= 1;
+                self.state.pc = self.state.stack[self.state.sp] as usize;
                 None
             }
         }
     }
 
     fn jp(&mut self, address: usize) {
-        self.pc = address;
+        self.state.pc = address;
     }
 
     fn jp_v0(&mut self, address: usize) {
-        self.pc = address + (self.v[0] as usize);
+        self.state.pc = address + (self.state.v[0] as usize);
     }
 
     fn call(&mut self, address: usize) {
         match address {
             a if a >= Self::MAX_PROGRAM_SIZE => {
-                self.error = Some(Chip8Error::AddressOutOfRangeError);
+                self.state.error = Some(Chip8Error::AddressOutOfRangeError);
                 return;
             }
             _ => (),
         }
-        self.stack[self.sp] = self.pc as u16;
-        self.sp += 1;
-        self.pc = address as usize;
+        self.state.stack[self.state.sp] = self.state.pc as u16;
+        self.state.sp += 1;
+        self.state.pc = address as usize;
 
-        self.error = match self.sp {
+        self.state.error = match self.state.sp {
             sp if sp >= Self::STACK_SIZE => Some(Chip8Error::StackOverflowError),
             _ => None,
         };
     }
 
     fn se_byte(&mut self, x: usize, byte: u8) {
-        if self.v[x] == byte {
-            self.pc += 2;
+        if self.state.v[x] == byte {
+            self.state.pc += 2;
         }
     }
 
     fn se_reg(&mut self, x: usize, y: usize) {
-        if self.v[x] == self.v[y] {
-            self.pc += 2;
+        if self.state.v[x] == self.state.v[y] {
+            self.state.pc += 2;
         }
     }
 
     fn sne_byte(&mut self, x: usize, byte: u8) {
-        if self.v[x] != byte {
-            self.pc += 2;
+        if self.state.v[x] != byte {
+            self.state.pc += 2;
         }
     }
 
     fn sne_reg(&mut self, x: usize, y: usize) {
-        if self.v[x] != self.v[y] {
-            self.pc += 2;
+        if self.state.v[x] != self.state.v[y] {
+            self.state.pc += 2;
         }
     }
 
     fn ld_byte(&mut self, x: usize, byte: u8) {
-        self.v[x] = byte;
+        self.state.v[x] = byte;
     }
 
     fn ld_reg(&mut self, x: usize, y: usize) {
-        self.v[x] = self.v[y];
+        self.state.v[x] = self.state.v[y];
     }
 
     fn load_i(&mut self, addr: usize) {
-        self.i = addr;
+        self.state.i = addr;
     }
 
     fn add_byte(&mut self, x: usize, byte: u8) {
-        self.v[x] = self.v[x].wrapping_add(byte);
+        self.state.v[x] = self.state.v[x].wrapping_add(byte);
     }
 
     fn add_reg(&mut self, x: usize, y: usize) {
-        let sum = u16::from(self.v[x]) + u16::from(self.v[y]);
-        self.v[0xF] = if sum > 0xFF { 1 } else { 0 };
-        self.v[x] = sum as u8;
+        let sum = u16::from(self.state.v[x]) + u16::from(self.state.v[y]);
+        self.state.v[0xF] = if sum > 0xFF { 1 } else { 0 };
+        self.state.v[x] = sum as u8;
     }
 
     fn or(&mut self, x: usize, y: usize) {
-        self.v[x] |= self.v[y];
+        self.state.v[x] |= self.state.v[y];
     }
 
     fn and(&mut self, x: usize, y: usize) {
-        self.v[x] &= self.v[y];
+        self.state.v[x] &= self.state.v[y];
     }
 
     fn xor(&mut self, x: usize, y: usize) {
-        self.v[x] ^= self.v[y];
+        self.state.v[x] ^= self.state.v[y];
     }
 
     fn sub(&mut self, x: usize, y: usize) {
-        if self.v[x] > self.v[y] {
-            self.v[0xF] = 1;
+        if self.state.v[x] > self.state.v[y] {
+            self.state.v[0xF] = 1;
         } else {
-            self.v[0xF] = 0;
+            self.state.v[0xF] = 0;
         }
 
-        self.v[x] = ((self.v[x] as i32) - (self.v[y] as i32)) as u8;
+        self.state.v[x] = ((self.state.v[x] as i32) - (self.state.v[y] as i32)) as u8;
     }
 
     fn shr(&mut self, x: usize) {
-        let v = self.v[x];
-        self.v[0xF] = v & 0x1;
-        self.v[x] = v >> 1;
+        let v = self.state.v[x];
+        self.state.v[0xF] = v & 0x1;
+        self.state.v[x] = v >> 1;
     }
 
     fn shl(&mut self, x: usize) {
-        let v = self.v[x];
-        self.v[0xF] = v >> 7;
-        self.v[x] = v << 1;
+        let v = self.state.v[x];
+        self.state.v[0xF] = v >> 7;
+        self.state.v[x] = v << 1;
     }
 
     fn subn(&mut self, x: usize, y: usize) {
-        if self.v[y] > self.v[x] {
-            self.v[0xF] = 1;
+        if self.state.v[y] > self.state.v[x] {
+            self.state.v[0xF] = 1;
         } else {
-            self.v[0xF] = 0;
+            self.state.v[0xF] = 0;
         }
-        self.v[x] = self.v[y].wrapping_sub(self.v[x]);
+        self.state.v[x] = self.state.v[y].wrapping_sub(self.state.v[x]);
     }
 
     fn rnd(&mut self, x: usize, byte: u8) {
         let r = rand::random::<u8>();
-        self.v[x] = r & byte;
+        self.state.v[x] = r & byte;
     }
 
     fn ld_dt_v(&mut self, x: usize) {
-        self.dt = self.v[x];
+        self.state.dt = self.state.v[x];
     }
 
     fn ld_v_dt(&mut self, x: usize) {
-        self.v[x] = self.dt;
+        self.state.v[x] = self.state.dt;
     }
 
     fn ld_key(&mut self, x: usize) {
-        for i in 0..self.keys.len() {
-            if self.keys[i] {
-                self.v[x] = i as u8;
+        for i in 0..self.state.keys.len() {
+            if self.state.keys[i] {
+                self.state.v[x] = i as u8;
                 return;
             }
         }
 
-        self.pc -= 2;
+        self.state.pc -= 2;
     }
 
     fn ld_st_v(&mut self, x: usize) {
-        self.st = self.v[x];
+        self.state.st = self.state.v[x];
     }
 
     fn skp(&mut self, x: usize) {
-        if self.keys[x] {
-            self.pc += 2;
+        if self.state.keys[x] {
+            self.state.pc += 2;
         }
     }
 
     fn sknp(&mut self, x: usize) {
-        if !self.keys[x] {
-            self.pc += 2;
+        if !self.state.keys[x] {
+            self.state.pc += 2;
         }
     }
 
     fn drw(&mut self, vx: usize, vy: usize, n: u8) {
         let mut carry: u8 = 0;
-        let x = self.v[vx];
-        let y = self.v[vy];
+        let x = self.state.v[vx];
+        let y = self.state.v[vy];
 
         for i in 0..n {
             let x_offset = x >> 3;
             let x_bit = x & 7;
-            let y_offset = ((y + i) as usize) * Self::PITCH;
-            let mem_addr = i as usize + self.i;
-            let mem_byte = self.memory[mem_addr as usize];
+            let y_offset = ((y + i) as usize) * Chip8State::PITCH;
+            let mem_addr = i as usize + self.state.i;
+            let mem_byte = self.state.memory[mem_addr as usize];
 
             let video_addr = y_offset + (x_offset as usize);
 
@@ -532,56 +550,57 @@ impl Chip8State {
                 break;
             }
 
-            let byte_0 = self.video[video_addr];
-            let byte_1 = self.video[video_addr + 1];
-            self.video[video_addr] ^= mem_byte >> x_bit;
+            let byte_0 = self.state.video[video_addr];
+            let byte_1 = self.state.video[video_addr + 1];
+            self.state.video[video_addr] ^= mem_byte >> x_bit;
 
             if x_bit > 0 {
-                self.video[video_addr + 1] ^= mem_byte << (8 - x_bit);
+                self.state.video[video_addr + 1] ^= mem_byte << (8 - x_bit);
             }
 
-            carry |= byte_0 & !self.video[video_addr];
-            carry |= byte_1 & !self.video[video_addr + 1];
+            carry |= byte_0 & !self.state.video[video_addr];
+            carry |= byte_1 & !self.state.video[video_addr + 1];
         }
 
-        self.v[0xF] = match carry {
+        self.state.v[0xF] = match carry {
             0 => 0 as u8,
             _ => 1 as u8,
         };
     }
 
     fn add_i(&mut self, x: usize) {
-        self.i += self.v[x] as usize;
+        self.state.i += self.state.v[x] as usize;
     }
 
     fn fnt(&mut self, x: usize) {
-        let addr = 0 + self.v[x] * 5;
-        self.i = addr as usize;
+        let addr = 0 + self.state.v[x] * 5;
+        self.state.i = addr as usize;
     }
 
     fn bcd(&mut self, x: usize) {
-        let value = self.v[x];
-        let addr = self.i;
+        let value = self.state.v[x];
+        let addr = self.state.i;
 
-        self.memory[addr] = ((value as u16 % 1000) / 100) as u8;
-        self.memory[addr + 1] = (value % 100) / 10;
-        self.memory[addr + 2] = value % 10;
+        self.state.memory[addr] = ((value as u16 % 1000) / 100) as u8;
+        self.state.memory[addr + 1] = (value % 100) / 10;
+        self.state.memory[addr + 2] = value % 10;
     }
 
     fn save(&mut self, x: usize) {
-        let addr = self.i;
+        let addr = self.state.i;
 
         for i in 0..=x {
-            self.memory[addr + i] = self.v[i];
+            self.state.memory[addr + i] = self.state.v[i];
         }
     }
 
     fn restore(&mut self, x: usize) {
         for i in 0..=x {
-            self.v[i] = self.memory[self.i + i];
+            self.state.v[i] = self.state.memory[self.state.i + i];
         }
     }
 }
+
 
 #[cfg(test)]
 mod tests {
