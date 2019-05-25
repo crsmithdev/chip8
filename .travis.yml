@@ -8,6 +8,9 @@ addons:
       - libssl-dev
       - libgtk-3-dev
 
+env:
+  - LD_LIBRARY_PATH=/usr/local/lib
+
 before_install: |
   wget https://www.libsdl.org/release/SDL2-2.0.9.tar.gz
   tar -zxvf SDL2-2.0.9.tar.gz
@@ -37,14 +40,9 @@ matrix:
 script:
   - cargo clean --verbose
   - cargo build --verbose
-  - LD_LIBRARY_PATH=/usr/local/lib cargo test --verbose
+  - cargo test --verbose
 
 after_success: |
   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
-    # Uncomment the following line for coveralls.io
-    LD_LIBRARY_PATH=/usr/local/lib cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
-
-    # Uncomment the following two lines create and upload a report for codecov.io
-    # cargo tarpaulin --out Xml
-    # bash <(curl -s https://codecov.io/bash)
+    cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
   fi
