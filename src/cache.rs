@@ -11,14 +11,20 @@ pub struct RefCache<K, V> {
     cache: UnsafeCell<HashMap<K, CacheValue<V>>>,
 }
 
-impl<K: Eq + Hash, V> RefCache<K, V> {
-    pub fn new() -> RefCache<K, V> {
+impl<K: Eq + Hash, V> Default for RefCache<K, V> {
+    fn default() -> Self {
         RefCache {
             cache: UnsafeCell::new(HashMap::new()),
         }
     }
+}
 
-    pub fn put<'a>(&'a self, key: K, value: V) {
+impl<K: Eq + Hash, V> RefCache<K, V> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn put(&self, key: K, value: V) {
         let cache = unsafe { &mut *self.cache.get() };
         let c_value = CacheValue {
             v: UnsafeCell::new(value),

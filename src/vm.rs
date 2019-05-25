@@ -126,19 +126,18 @@ impl<'a> VM<'a> {
     fn handle_events(&mut self) {
         while let Some(event) = self.events.poll_event() {
             match event {
-                Event::Quit { .. } => self.state.cpu_state = CPUState::Stopped,
+                Event::Quit { .. } => self.quit(),
                 Event::KeyDown {
                     keycode: Some(code),
                     ..
                 } => match code {
-                    Keycode::Escape => self.state.cpu_state = CPUState::Stopped,
                     Keycode::LeftBracket => self.dec_hz(),
                     Keycode::RightBracket => self.inc_hz(),
                     Keycode::F1 => self.load_file(),
                     Keycode::F2 => self.reload(),
                     Keycode::F3 => self.restart(),
                     Keycode::F5 => self.toggle_pause(),
-                    Keycode::F6 => self.state.cpu_state = CPUState::OneStep,
+                    Keycode::F6 => self.advance(),
                     Keycode::Num1 => self.key_down(0x1),
                     Keycode::Num2 => self.key_down(0x2),
                     Keycode::Num3 => self.key_down(0x3),
@@ -199,6 +198,14 @@ impl<'a> VM<'a> {
             }
             _ => (),
         };
+    }
+
+    fn advance(&mut self) {
+        self.state.cpu_state == CPUState::OneStep;
+    }
+
+    fn quit(&mut self) {
+        self.state.cpu_state == CPUState::Stopped;
     }
 
     fn reload(&mut self) {

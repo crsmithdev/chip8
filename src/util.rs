@@ -19,12 +19,12 @@ impl FPSCounter {
         }
     }
 
-    pub fn frame(&mut self) -> u32 {
+    pub fn frame(&mut self) -> u64 {
         let now = SystemTime::now();
         let delta = now.duration_since(self.last_frame).unwrap().as_millis() as f32;
         self.frames += 1;
         self.last_frame = now;
-        (self.ms_per_frame - delta).max(0.0) as u32
+        (self.ms_per_frame - delta).max(0.0) as u64
     }
 
     pub fn fps(&mut self) -> f32 {

@@ -1,15 +1,11 @@
+#![deny(clippy::cognitive_complexity)]
+
 extern crate rand;
 
 use rom;
 use std::error::Error;
 use std::fmt;
 use std::string::String;
-
-const MEMORY_SIZE: usize = 4096;
-const VIDEO_SIZE: usize = 256;
-const MAX_PROGRAM_SIZE: usize = 3584;
-const PITCH: usize = 8;
-const STACK_SIZE: usize = 16;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Chip8Error {
@@ -47,21 +43,47 @@ pub struct Chip8 {
     state: Chip8State,
 }
 
+impl Default for Chip8 {
+    fn default() -> Self {
+        Chip8 {
+            state: Chip8State {
+                pc: Self::PROGRAM_START,
+                sp: 0,
+                memory: [0; Self::MEMORY_SIZE],
+                stack: [0; Self::STACK_SIZE],
+                video: [0; Self::VIDEO_SIZE],
+                keys: [false; 16],
+                v: [0; 16],
+                i: Self::PROGRAM_START,
+                dt: 0,
+                st: 0,
+                error: None,
+            },
+        }
+    }
+}
+
 #[allow(dead_code)]
 impl Chip8 {
     pub const PROGRAM_START: usize = 512;
+    const MEMORY_SIZE: usize = 4096;
+    const VIDEO_SIZE: usize = 256;
+    const MAX_PROGRAM_SIZE: usize = 3584;
+    const STACK_SIZE: usize = 16;
+    const N_REGISTERS: usize = 16;
+    const N_KEYS: usize = 16;
 
     pub fn new() -> Chip8 {
         Chip8 {
             state: Chip8State {
                 pc: Self::PROGRAM_START,
                 sp: 0,
-                memory: [0; MEMORY_SIZE],
-                stack: [0; STACK_SIZE],
-                video: [0; VIDEO_SIZE],
-                keys: [false; 16],
-                v: [0; 16],
-                i: Self::PROGRAM_START as u16,
+                memory: [0; Self::MEMORY_SIZE],
+                stack: [0; Self::STACK_SIZE],
+                video: [0; Self::VIDEO_SIZE],
+                keys: [false; Self::N_KEYS],
+                v: [0; Self::N_REGISTERS],
+                i: Self::PROGRAM_START,
                 dt: 0,
                 st: 0,
                 error: None,
@@ -123,7 +145,7 @@ impl Chip8 {
 
         DecodedInstruction {
             operation: String::from(op),
-            params: params,
+            params,
         }
     }
 
@@ -132,22 +154,20 @@ impl Chip8 {
 
         state.pc = Self::PROGRAM_START;
         state.sp = 0;
-        state.i = Self::PROGRAM_START as u16;
+        state.i = Self::PROGRAM_START;
         state.dt = 0;
         state.st = 0;
         state.error = None;
-        state.stack = [0; STACK_SIZE];
-        state.video = [0; VIDEO_SIZE];
+        state.stack = [0; Self::STACK_SIZE];
+        state.video = [0; Self::VIDEO_SIZE];
         state.keys = [false; 16];
         state.v = [0; 16];
     }
 
     pub fn hard_reset(&mut self) {
         self.soft_reset();
-        self.state.memory = [0; MEMORY_SIZE];
-        for i in 0..rom::ROM.len() {
-            self.state.memory[i] = rom::ROM[i];
-        }
+        self.state.memory = [0; Self::MEMORY_SIZE];
+        self.state.memory[..rom::ROM.len()].clone_from_slice(&rom::ROM);
     }
 
     pub fn press_key(&mut self, key: usize) {
@@ -158,25 +178,18 @@ impl Chip8 {
         self.state.keys[key] = false;
     }
 
-    pub fn load_bytes(&mut self, bytes: &[u8]) -> Result<(), Chip8Error> {
+    pub fn load_bytes(&mut self, bytes: &[u8]) -> Result<usize, Chip8Error> {
         let cpu = &mut self.state;
-        for i in 0..cpu.memory.len() {
-            cpu.memory[i] = 0;
-        }
+        let n_bytes = bytes.len();
 
-        if bytes.len() > MAX_PROGRAM_SIZE {
+        if n_bytes > Self::MAX_PROGRAM_SIZE {
             return Err(Chip8Error::ProgramLoadError);
         }
 
-        for i in 0..rom::ROM.len() {
-            cpu.memory[i] = rom::ROM[i];
-        }
+        let i = Self::PROGRAM_START;
+        cpu.memory[i..i + n_bytes].clone_from_slice(&bytes);
 
-        for i in 0..bytes.len() {
-            cpu.memory[i + Self::PROGRAM_START] = bytes[i];
-        }
-
-        Ok(())
+        Ok(n_bytes)
     }
 
     pub fn execute_cycle(&mut self) -> Result<(), Chip8Error> {
@@ -185,14 +198,14 @@ impl Chip8 {
 }
 
 pub struct Chip8State {
-    pub video: [u8; VIDEO_SIZE],
-    pub memory: [u8; MEMORY_SIZE],
+    pub video: [u8; Chip8::VIDEO_SIZE],
+    pub memory: [u8; Chip8::MEMORY_SIZE],
     pub v: [u8; 16],
     pub stack: [u16; 16],
     pub keys: [bool; 16],
     pub pc: usize,
     pub sp: usize,
-    pub i: u16,
+    pub i: usize,
     pub dt: u8,
     pub st: u8,
     pub error: Option<Chip8Error>,
@@ -200,6 +213,14 @@ pub struct Chip8State {
 
 #[allow(dead_code)]
 impl Chip8State {
+    const MEMORY_SIZE: usize = 4096;
+    const VIDEO_SIZE: usize = 256;
+    const MAX_PROGRAM_SIZE: usize = 3584;
+    const STACK_SIZE: usize = 16;
+    const N_REGISTERS: usize = 16;
+    const N_KEYS: usize = 16;
+    const PITCH: usize = 8;
+
     #[inline(always)]
     pub fn video(&self) -> &[u8] {
         &self.video
@@ -221,7 +242,7 @@ impl Chip8State {
     }
 
     #[inline(always)]
-    pub fn i(&self) -> u16 {
+    pub fn i(&self) -> usize {
         self.i
     }
 
@@ -347,7 +368,7 @@ impl Chip8State {
 
     fn call(&mut self, address: usize) {
         match address {
-            a if a >= MAX_PROGRAM_SIZE => {
+            a if a >= Self::MAX_PROGRAM_SIZE => {
                 self.error = Some(Chip8Error::AddressOutOfRangeError);
                 return;
             }
@@ -358,7 +379,7 @@ impl Chip8State {
         self.pc = address as usize;
 
         self.error = match self.sp {
-            sp if sp >= STACK_SIZE => Some(Chip8Error::StackOverflowError),
+            sp if sp >= Self::STACK_SIZE => Some(Chip8Error::StackOverflowError),
             _ => None,
         };
     }
@@ -396,36 +417,29 @@ impl Chip8State {
     }
 
     fn ld_i(&mut self, addr: usize) {
-        self.i = addr as u16;
+        self.i = addr;
     }
 
     fn add_byte(&mut self, x: usize, byte: u8) {
-        // TODO verify
-        let value = self.v[x] as u16;
-        self.v[x] = (value + byte as u16) as u8;
+        self.v[x] = self.v[x].wrapping_add(byte);
     }
 
     fn add_reg(&mut self, x: usize, y: usize) {
-        let sum = (self.v[x] as u16) + (self.v[y] as u16);
+        let sum = u16::from(self.v[x]) + u16::from(self.v[y]);
+        self.v[0xF] = if sum > 0xFF { 1 } else { 0 };
         self.v[x] = sum as u8;
-
-        if sum > 0xFF {
-            self.v[0xF] = 1;
-        } else {
-            self.v[0xF] = 0;
-        }
     }
 
     fn or(&mut self, x: usize, y: usize) {
-        self.v[x] = self.v[x] | self.v[y];
+        self.v[x] |= self.v[y];
     }
 
     fn and(&mut self, x: usize, y: usize) {
-        self.v[x] = self.v[x] & self.v[y];
+        self.v[x] &= self.v[y];
     }
 
     fn xor(&mut self, x: usize, y: usize) {
-        self.v[x] = self.v[x] ^ self.v[y];
+        self.v[x] ^= self.v[y];
     }
 
     fn sub(&mut self, x: usize, y: usize) {
@@ -507,8 +521,8 @@ impl Chip8State {
         for i in 0..n {
             let x_offset = x >> 3;
             let x_bit = x & 7;
-            let y_offset = ((y + i) as usize) * PITCH;
-            let mem_addr = self.i + (i as u16);
+            let y_offset = ((y + i) as usize) * Self::PITCH;
+            let mem_addr = i as usize + self.i;
             let mem_byte = self.memory[mem_addr as usize];
 
             let video_addr = y_offset + (x_offset as usize);
@@ -537,17 +551,17 @@ impl Chip8State {
     }
 
     fn add_i(&mut self, x: usize) {
-        self.i += self.v[x] as u16;
+        self.i += self.v[x] as usize;
     }
 
     fn fnt(&mut self, x: usize) {
         let addr = 0 + self.v[x] * 5;
-        self.i = addr as u16;
+        self.i = addr as usize;
     }
 
     fn bcd(&mut self, x: usize) {
         let value = self.v[x];
-        let addr = self.i as usize;
+        let addr = self.i;
 
         self.memory[addr] = ((value as u16 % 1000) / 100) as u8;
         self.memory[addr + 1] = (value % 100) / 10;
@@ -555,7 +569,7 @@ impl Chip8State {
     }
 
     fn save(&mut self, x: usize) {
-        let addr = self.i as usize;
+        let addr = self.i;
 
         for i in 0..=x {
             self.memory[addr + i] = self.v[i];
@@ -563,10 +577,8 @@ impl Chip8State {
     }
 
     fn restore(&mut self, x: usize) {
-        let addr = self.i as usize;
-
         for i in 0..=x {
-            self.v[i] = self.memory[addr + i];
+            self.v[i] = self.memory[self.i + i];
         }
     }
 }
@@ -574,6 +586,36 @@ impl Chip8State {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_add_byte() {
+        let mut cpu = Chip8::new();
+
+        cpu.state.v[0] = 5;
+        cpu.state.add_byte(0, 5);
+        assert_eq!(cpu.state.v[0], 10);
+
+        cpu.state.v[0] = 255;
+        cpu.state.add_byte(0, 2);
+        assert_eq!(cpu.state.v[0], 1);
+    }
+
+    #[test]
+    fn test_add_reg() {
+        let mut cpu = Chip8::new();
+
+        cpu.state.v[0] = 5;
+        cpu.state.v[1] = 5;
+        cpu.state.add_reg(0, 1);
+        assert_eq!(cpu.state.v[0], 10);
+        assert_eq!(cpu.state.v[0xF], 0);
+
+        cpu.state.v[0] = 255;
+        cpu.state.v[1] = 2;
+        cpu.state.add_reg(0, 1);
+        assert_eq!(cpu.state.v[0], 1);
+        assert_eq!(cpu.state.v[0xF], 1);
+    }
 
     #[test]
     fn test_key_press_release() {

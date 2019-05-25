@@ -101,7 +101,6 @@ struct Context<'a> {
 }
 
 trait Component {
-    #[inline(always)]
     fn rect(&self) -> Rect;
 
     fn update(&mut self, context: ContextRef, state: &UpdateState);
@@ -111,6 +110,7 @@ trait Component {
 pub struct Screen {}
 
 impl Screen {
+    #[inline(always)]
     fn new() -> Screen {
         Screen {}
     }
@@ -172,6 +172,7 @@ pub struct Instructions {
 }
 
 impl Instructions {
+    #[inline(always)]
     fn new() -> Instructions {
         Instructions {
             offset: Chip8::PROGRAM_START,
@@ -182,6 +183,7 @@ impl Instructions {
 }
 
 impl Component for Instructions {
+    #[inline(always)]
     fn rect(&self) -> Rect {
         *RECT_INSTRUCTIONS
     }
@@ -235,7 +237,7 @@ pub struct Registers {
     pub v: [u8; 16],
     pub pc: usize,
     pub sp: usize,
-    pub i: u16,
+    pub i: usize,
     pub dt: u8,
     pub st: u8,
     pub hz: u32,
@@ -243,6 +245,7 @@ pub struct Registers {
 }
 
 impl Registers {
+    #[inline(always)]
     fn new() -> Registers {
         Registers {
             pc: 0,
@@ -258,6 +261,7 @@ impl Registers {
 }
 
 impl Component for Registers {
+    #[inline(always)]
     fn rect(&self) -> Rect {
         *RECT_REGISTERS
     }
@@ -327,6 +331,7 @@ pub struct Log {
 }
 
 impl Log {
+    #[inline(always)]
     fn new() -> Log {
         Log {
             messages: VecDeque::new(),
@@ -335,6 +340,7 @@ impl Log {
 }
 
 impl Component for Log {
+    #[inline(always)]
     fn rect(&self) -> Rect {
         *RECT_LOG
     }
@@ -365,10 +371,12 @@ impl Component for Log {
 struct Panel(Box<Component>);
 
 impl Component for Panel {
+    #[inline(always)]
     fn rect(&self) -> Rect {
         self.0.rect()
     }
 
+    #[inline(always)]
     fn update(&mut self, _ctx: ContextRef, _state: &UpdateState) {
         self.0.update(_ctx, _state)
     }
@@ -420,15 +428,15 @@ impl<'a> Display<'a> {
         ];
 
         let context = Rc::new(Context {
-            cache: cache,
-            log: log,
+            cache,
+            log,
             canvas: Rc::new(RefCell::new(canvas)),
             font: ttf_context.load_font(*FONT_PATH, FONT_SIZE).unwrap(),
         });
 
         Display {
-            context: context.clone(),
-            panels: panels,
+            context,
+            panels,
             frame: 0,
         }
     }
