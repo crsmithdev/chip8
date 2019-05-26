@@ -27,7 +27,7 @@ before_install: |
 
 before_cache: |
   if [[ "$TRAVIS_RUST_VERSION" == stable ]]; then
-    cargo install cargo-tarpaulin --version=0.8.3 -f
+    cargo install cargo-tarpaulin
   fi
 
 rust:
