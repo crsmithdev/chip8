@@ -286,6 +286,7 @@ impl Default for Chip8 {
     }
 }
 
+#[allow(dead_code)]
 impl Chip8 {
     pub fn new() -> Chip8 {
         Self::default()
@@ -335,6 +336,16 @@ impl Chip8 {
 
         self.state.pc += 2;
         self.execute(OpCode::decode(instruction))
+    }
+
+    pub fn execute_all(&mut self, opcodes: &[OpCode]) -> Result<(), Chip8Error> {
+        for opcode in opcodes.iter() {
+            if let Err(e) = self.execute(*opcode) {
+                return Err(e);
+            }
+        }
+
+        Ok(())
     }
 
     fn execute(&mut self, opcode: OpCode) -> Result<(), Chip8Error> {
@@ -627,58 +638,67 @@ impl Chip8 {
 mod tests {
     use super::*;
 
-    macro_rules! execute {
-        ($cpu:expr, $opcode:expr) => {
-            let result = $cpu.execute($opcode);
-            assert!(result.is_ok());
-        };
-    }
-
     #[test]
     fn clear_screen() {
         let mut cpu = Chip8::new();
         cpu.state.video[0] = 0xFF;
 
-        execute!(cpu, OpCode::ClearScreen);
+        let result = cpu.execute(OpCode::ClearScreen);
+        assert!(result.is_ok());
         assert_eq!(cpu.state.video[0], 0);
     }
 
     #[test]
     fn load_address() {
         let mut cpu = Chip8::new();
-        execute!(cpu, OpCode::LoadAddress { address: 800 });
+        let result = cpu.execute(OpCode::LoadAddress { address: 800 });
+
+        assert!(result.is_ok());
         assert_eq!(cpu.state.i, 800);
     }
 
     #[test]
-    fn add_byte() {
+    fn load_add_byte() {
         let mut cpu = Chip8::new();
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 5 },
+            OpCode::AddByte { x: 0, byte: 5 },
+        ]);
 
-        cpu.state.v[0] = 5;
-        execute!(cpu, OpCode::AddByte { x: 0, byte: 5 });
+        assert!(result.is_ok());
         assert_eq!(cpu.state.v[0], 10);
 
-        cpu.state.v[0] = 255;
-        execute!(cpu, OpCode::AddByte { x: 0, byte: 2 });
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 0xFF },
+            OpCode::AddByte { x: 0, byte: 2 },
+        ]);
+
         assert_eq!(cpu.state.v[0], 1);
+        assert!(result.is_ok());
     }
 
     #[test]
     fn add() {
         let mut cpu = Chip8::new();
-        let op = OpCode::Add { x: 0, y: 1 };
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 1 },
+            OpCode::LoadByte { x: 1, byte: 2 },
+            OpCode::Add { x: 0, y: 1 },
+        ]);
 
-        cpu.state.v[0] = 5;
-        cpu.state.v[1] = 5;
-        execute!(cpu, op);
-        assert_eq!(cpu.state.v[0], 10);
+        assert_eq!(cpu.state.v[0], 3);
         assert_eq!(cpu.state.v[0xF], 0);
+        assert!(result.is_ok());
 
-        cpu.state.v[0] = 255;
-        cpu.state.v[1] = 2;
-        execute!(cpu, op);
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 0xFF },
+            OpCode::LoadByte { x: 1, byte: 2 },
+            OpCode::Add { x: 0, y: 1 },
+        ]);
+
         assert_eq!(cpu.state.v[0], 1);
         assert_eq!(cpu.state.v[0xF], 1);
+        assert!(result.is_ok());
     }
 
     #[test]
