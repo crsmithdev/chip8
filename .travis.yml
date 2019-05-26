@@ -45,5 +45,5 @@ script:
 
 after_success: |
   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
-    cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID --debug
+    RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID --debug
   fi
