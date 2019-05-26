@@ -83,7 +83,7 @@ impl<'a> VM<'a> {
         self.state.last_step = SystemTime::now();
         let mut fps = FPSCounter::new(FPS_DEFAULT);
 
-        self.cpu.load_bytes(&rom::BOOT).unwrap();
+        self.cpu.load_rom(&rom::BOOT).unwrap();
         info!("Started");
 
         'runloop: loop {
@@ -194,7 +194,7 @@ impl<'a> VM<'a> {
                 let mut file = File::open(path).unwrap();
                 file.read_to_end(&mut bytes).unwrap();
                 self.cpu.hard_reset();
-                self.cpu.load_bytes(&bytes).unwrap();
+                self.cpu.load_rom(&bytes).unwrap();
             }
             _ => (),
         };
@@ -220,7 +220,7 @@ impl<'a> VM<'a> {
     }
 
     fn restart(&mut self) {
-        self.cpu.load_bytes(&rom::BOOT).unwrap();
+        self.cpu.load_rom(&rom::BOOT).unwrap();
         self.cpu.hard_reset();
         self.state = RunState {
             cpu_state: CPUState::Running,

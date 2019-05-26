@@ -1,5 +1,5 @@
 use cache::RefCache;
-use cpu::Chip8;
+use cpu::OpCode;
 use logger::Logger;
 use sdl2::pixels::{Color, PixelFormatEnum};
 use sdl2::rect::Rect;
@@ -175,7 +175,7 @@ impl Instructions {
     #[inline(always)]
     fn new() -> Instructions {
         Instructions {
-            offset: Chip8::PROGRAM_START,
+            offset: 0,
             instructions: [0; N_INSTRUCTIONS],
             highlighted: 0,
         }
@@ -190,14 +190,14 @@ impl Component for Instructions {
 
     fn update(&mut self, _ctx: ContextRef, state: &UpdateState) {
         let cpu = &state.cpu;
-        if cpu.pc < self.offset + 4 || cpu.pc > self.offset + N_INSTRUCTIONS * 2 - 4 {
-            self.offset = cpu.pc - 4;
+        if cpu.pc() < self.offset + 4 || cpu.pc() > self.offset + N_INSTRUCTIONS * 2 - 4 {
+            self.offset = cpu.pc() - 4;
         }
         for i in 0..N_INSTRUCTIONS {
             let address = self.offset + i * 2;
-            let inst = cpu.fetch(address as u16);
+            let inst = cpu.fetch(address);
             self.instructions[i] = inst;
-            if state.cpu.pc == address {
+            if state.cpu.pc() == address {
                 self.highlighted = address;
             };
         }
@@ -219,13 +219,13 @@ impl Component for Instructions {
                 canvas.fill_rect(rect).unwrap();
             }
 
-            let result = Chip8::disassemble(inst);
+            let (op, params) = OpCode::disassemble(inst);
 
             text!(context {
                 Style::Address     => x,       y => format!("{:04X}", address)
                 Style::Instruction => x + 85,  y => format!("{:04X}", inst)
-                Style::Default     => x + 170, y => result.operation
-                Style::Default     => x + 280, y => result.params
+                Style::Default     => x + 170, y => op
+                Style::Default     => x + 280, y => params
             });
 
             y += LINE_HEIGHT;
@@ -267,14 +267,14 @@ impl Component for Registers {
     }
 
     fn update(&mut self, _ctx: ContextRef, state: &UpdateState) {
-        self.pc = state.cpu.pc;
-        self.sp = state.cpu.sp;
-        self.i = state.cpu.i;
-        self.dt = state.cpu.dt;
-        self.st = state.cpu.st;
+        self.pc = state.cpu.pc();
+        self.sp = state.cpu.sp();
+        self.i = state.cpu.i();
+        self.dt = state.cpu.dt();
+        self.st = state.cpu.st();
         self.fps = state.run.fps;
         self.hz = state.run.hz;
-        self.v.clone_from_slice(&state.cpu.v);
+        self.v.clone_from_slice(&state.cpu.registers());
     }
 
     fn render(&mut self, context: ContextRef, _state: &UpdateState) {

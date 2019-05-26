@@ -1,3 +1,4 @@
+// #![warn(clippy)]
 mod cache;
 mod cpu;
 mod display;

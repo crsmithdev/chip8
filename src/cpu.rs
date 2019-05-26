@@ -1,7 +1,3 @@
-#![deny(clippy::cognitive_complexity)]
-
-extern crate rand;
-
 use rom;
 use std::error::Error;
 use std::fmt;
@@ -14,11 +10,6 @@ pub enum Chip8Error {
     ProgramLoadError,
     StackOverflowError,
     StackUnderflowError,
-}
-
-pub struct DecodedInstruction {
-    pub operation: String,
-    pub params: String,
 }
 
 impl fmt::Display for Chip8Error {
@@ -39,41 +30,174 @@ impl Error for Chip8Error {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum OpCode {
+    ClearScreen,
+    Return,
+    Jump { address: usize },
+    Call { address: usize },
+    SkipByteEqual { x: usize, byte: u8 },
+    SkipByteNotEqual { x: usize, byte: u8 },
+    SkipEqual { x: usize, y: usize },
+    SkipNotEqual { x: usize, y: usize },
+    LoadByte { x: usize, byte: u8 },
+    AddByte { x: usize, byte: u8 },
+    Load { x: usize, y: usize },
+    Or { x: usize, y: usize },
+    And { x: usize, y: usize },
+    Xor { x: usize, y: usize },
+    Add { x: usize, y: usize },
+    Sub { x: usize, y: usize },
+    ShiftRight { x: usize },
+    SubReverse { x: usize, y: usize },
+    ShiftLeft { x: usize },
+    LoadAddress { address: usize },
+    JumpOffset { address: usize },
+    Random { x: usize, byte: u8 },
+    Draw { x: usize, y: usize, n: u8 },
+    SkipKeyPressed { x: usize },
+    SkipNotPressed { x: usize },
+    LoadFromDelayTimer { x: usize },
+    WaitKey { x: usize },
+    LoadDelayTimer { x: usize },
+    LoadSoundTimer { x: usize },
+    AddAddress { x: usize },
+    LoadFont { x: usize },
+    BCD { x: usize },
+    Save { x: usize },
+    Restore { x: usize },
+    Unknown { instruction: u16 },
+}
+
+impl OpCode {
+    pub fn decode(instruction: u16) -> OpCode {
+        let address = (instruction & 0xFFF) as usize;
+        let byte = (instruction & 0xFF) as u8;
+        let x = (instruction >> 8 & 0xF) as usize;
+        let y = (instruction >> 4 & 0xF) as usize;
+        let n = (instruction & 0xF) as u8;
+
+        match instruction {
+            0x00E0 => OpCode::ClearScreen,
+            0x00EE => OpCode::Return,
+            i if i & 0xF000 == 0x1000 => OpCode::Jump { address },
+            i if i & 0xF000 == 0x2000 => OpCode::Call { address },
+            i if i & 0xF000 == 0x3000 => OpCode::SkipByteEqual { x, byte },
+            i if i & 0xF000 == 0x4000 => OpCode::SkipByteNotEqual { x, byte },
+            i if i & 0xF000 == 0x5000 => OpCode::SkipEqual { x, y },
+            i if i & 0xF000 == 0x6000 => OpCode::LoadByte { x, byte },
+            i if i & 0xF000 == 0x7000 => OpCode::AddByte { x, byte },
+            i if i & 0xF00F == 0x8000 => OpCode::Load { x, y },
+            i if i & 0xF00F == 0x8001 => OpCode::Or { x, y },
+            i if i & 0xF00F == 0x8002 => OpCode::And { x, y },
+            i if i & 0xF00F == 0x8003 => OpCode::Xor { x, y },
+            i if i & 0xF00F == 0x8004 => OpCode::Add { x, y },
+            i if i & 0xF00F == 0x8005 => OpCode::Sub { x, y },
+            i if i & 0xF00F == 0x8006 => OpCode::ShiftRight { x },
+            i if i & 0xF00F == 0x8007 => OpCode::SubReverse { x, y },
+            i if i & 0xF00F == 0x800E => OpCode::ShiftLeft { x },
+            i if i & 0xF00F == 0x9000 => OpCode::SkipNotEqual { x, y },
+            i if i & 0xF000 == 0xA000 => OpCode::LoadAddress { address },
+            i if i & 0xF000 == 0xB000 => OpCode::JumpOffset { address },
+            i if i & 0xF000 == 0xC000 => OpCode::Random { x, byte },
+            i if i & 0xF000 == 0xD000 => OpCode::Draw { x, y, n },
+            i if i & 0xF0FF == 0xE09E => OpCode::SkipKeyPressed { x },
+            i if i & 0xF0FF == 0xE0A1 => OpCode::SkipNotPressed { x },
+            i if i & 0xF0FF == 0xF007 => OpCode::LoadFromDelayTimer { x },
+            i if i & 0xF0FF == 0xF00A => OpCode::WaitKey { x },
+            i if i & 0xF0FF == 0xF015 => OpCode::LoadDelayTimer { x },
+            i if i & 0xF0FF == 0xF018 => OpCode::LoadSoundTimer { x },
+            i if i & 0xF0FF == 0xF01E => OpCode::AddAddress { x },
+            i if i & 0xF0FF == 0xF029 => OpCode::LoadFont { x },
+            i if i & 0xF0FF == 0xF033 => OpCode::BCD { x },
+            i if i & 0xF0FF == 0xF055 => OpCode::Save { x },
+            i if i & 0xF0FF == 0xF065 => OpCode::Restore { x },
+            _ => OpCode::Unknown { instruction },
+        }
+    }
+
+    pub fn disassemble(instruction: u16) -> (String, String) {
+        use cpu::OpCode::*;
+
+        let (op, params) = match Self::decode(instruction) {
+            ClearScreen => ("CLS", String::new()),
+            Return => ("RET", String::new()),
+            Jump { address } => ("JUMP", format!("#{:04X}", address)),
+            Call { address } => ("CALL", format!("#{:04X}", address)),
+            SkipByteEqual { x, byte } => ("SE", format!("V{:X}, {:02X}", x, byte)),
+            SkipByteNotEqual { x, byte } => ("SNE", format!("V{:X}, {:02X}", x, byte)),
+            SkipEqual { x, y } => ("SE", format!("V{:X}, V{}", x, y)),
+            LoadByte { x, byte } => ("LOAD", format!("V{:X}, {:02X}", x, byte)),
+            AddByte { x, byte } => ("ADD", format!("V{:X}, {:02X}", x, byte)),
+            Load { x, y } => ("LOAD", format!("V{:X}, V{:X}", x, y)),
+            Or { x, y } => ("OR", format!("V{:X}, V{:X}", x, y)),
+            And { x, y } => ("AND", format!("V{:X}, V{:X}", x, y)),
+            Xor { x, y } => ("XOR", format!("V{:X}, V{:X}", x, y)),
+            Add { x, y } => ("ADD", format!("V{:X}, V{:X}", x, y)),
+            Sub { x, y } => ("SUB", format!("V{:X}, V{:X}", x, y)),
+            ShiftRight { x } => ("SHR", format!("V{:X}", x)),
+            SubReverse { x, y } => ("SUBN", format!("V{:X}, V{:X}", x, y)),
+            ShiftLeft { x } => ("SHL", format!("V{:X}", x)),
+            SkipNotEqual { x, y } => ("SNE", format!("V{:X}, V{:X}", x, y)),
+            LoadAddress { address } => ("LOAD", format!("I, #{:04X}", address)),
+            JumpOffset { address } => ("JUMP", format!("V0, #{:04X}", address)),
+            Random { x, byte } => ("RND", format!("V{:X}, #{:02X}", x, byte)),
+            Draw { x, y, n } => ("DRAW", format!("V{:X}, V{:X}, {}", x, y, n)),
+            SkipKeyPressed { x } => ("SKP", format!("V{:X}", x)),
+            SkipNotPressed { x } => ("SKNP", format!("V{:X}", x)),
+            LoadFromDelayTimer { x } => ("LOAD", format!("V{:X}, DT", x)),
+            WaitKey { x } => ("LOAD", format!("V{:X}, K", x)),
+            LoadDelayTimer { x } => ("LOAD", format!("DT, V{:X}", x)),
+            LoadSoundTimer { x } => ("LOAD", format!("ST, V{:X}", x)),
+            AddAddress { x } => ("ADD", format!("I, V{:X}", x)),
+            LoadFont { x } => ("FONT", format!("I, V{:X}", x)),
+            BCD { x } => ("BCD", format!("I, V{:X}", x)),
+            Save { x } => ("SAV", format!("[I], V{:X}", x)),
+            Restore { x } => ("RST", format!("V{:X}, [I]", x)),
+            Unknown { .. } => ("???", String::new()),
+        };
+
+        (op.to_owned(), params)
+    }
+}
+
 pub struct Chip8State {
-    pub video: [u8; Chip8::VIDEO_SIZE],
-    pub memory: [u8; Chip8::MEMORY_SIZE],
-    pub v: [u8; 16],
-    pub stack: [u16; 16],
-    pub keys: [bool; 16],
-    pub pc: usize,
-    pub sp: usize,
-    pub i: usize,
-    pub dt: u8,
-    pub st: u8,
-    pub error: Option<Chip8Error>,
+    video: [u8; Chip8State::VIDEO_SIZE],
+    memory: [u8; Chip8State::MEMORY_SIZE],
+    v: [u8; Chip8State::N_REGISTERS],
+    stack: [usize; Chip8State::STACK_SIZE],
+    keys: [bool; Chip8State::N_KEYS],
+    pc: usize,
+    sp: usize,
+    i: usize,
+    dt: u8,
+    st: u8,
+    error: Option<Chip8Error>,
 }
 
 impl Default for Chip8State {
     fn default() -> Self {
-        Chip8State {
+        let mut state = Chip8State {
             pc: Self::PROGRAM_START,
             sp: 0,
             memory: [0; Self::MEMORY_SIZE],
             stack: [0; Self::STACK_SIZE],
             video: [0; Self::VIDEO_SIZE],
-            keys: [false; 16],
-            v: [0; 16],
+            keys: [false; Self::N_KEYS],
+            v: [0; Self::N_REGISTERS],
             i: Self::PROGRAM_START,
             dt: 0,
             st: 0,
             error: None,
-        }
+        };
+        state.memory[..rom::ROM.len()].clone_from_slice(&rom::ROM);
+        state
     }
 }
+
 #[allow(dead_code)]
 impl Chip8State {
-    pub const PROGRAM_START: usize = 512;
-
+    const PROGRAM_START: usize = 512;
     const MEMORY_SIZE: usize = 4096;
     const VIDEO_SIZE: usize = 256;
     const MAX_PROGRAM_SIZE: usize = 3584;
@@ -84,6 +208,19 @@ impl Chip8State {
 
     pub fn new() -> Chip8State {
         Self::default()
+    }
+
+    pub fn from_rom(bytes: &[u8]) -> Chip8State {
+        let mut state = Self::default();
+        let program_range = Self::PROGRAM_START..Self::PROGRAM_START + bytes.len();
+        state.memory[program_range].clone_from_slice(&bytes);
+        state
+    }
+
+    pub fn from_state(other: &Chip8State) -> Chip8State {
+        let mut state = Chip8State::new();
+        state.memory[..].clone_from_slice(&other.memory);
+        state
     }
 
     #[inline(always)]
@@ -102,7 +239,7 @@ impl Chip8State {
     }
 
     #[inline(always)]
-    pub fn stack(&self) -> &[u16] {
+    pub fn stack(&self) -> &[usize] {
         &self.stack
     }
 
@@ -132,11 +269,7 @@ impl Chip8State {
     }
 
     #[inline(always)]
-    pub fn error(&self) -> Option<Chip8Error> {
-        None
-    }
-
-    pub fn fetch(&self, address: u16) -> u16 {
+    pub fn fetch(&self, address: usize) -> u16 {
         (self.memory[address as usize] as u16) << 8 | (self.memory[address as usize + 1] as u16)
     }
 }
@@ -148,48 +281,14 @@ pub struct Chip8 {
 impl Default for Chip8 {
     fn default() -> Self {
         Chip8 {
-            state: Chip8State {
-                pc: Self::PROGRAM_START,
-                sp: 0,
-                memory: [0; Self::MEMORY_SIZE],
-                stack: [0; Self::STACK_SIZE],
-                video: [0; Self::VIDEO_SIZE],
-                keys: [false; 16],
-                v: [0; 16],
-                i: Self::PROGRAM_START,
-                dt: 0,
-                st: 0,
-                error: None,
-            },
+            state: Chip8State::new(),
         }
     }
 }
 
 impl Chip8 {
-    pub const PROGRAM_START: usize = 512;
-    const MEMORY_SIZE: usize = 4096;
-    const VIDEO_SIZE: usize = 256;
-    const MAX_PROGRAM_SIZE: usize = 3584;
-    const STACK_SIZE: usize = 16;
-    const N_REGISTERS: usize = 16;
-    const N_KEYS: usize = 16;
-
     pub fn new() -> Chip8 {
-        Chip8 {
-            state: Chip8State {
-                pc: Self::PROGRAM_START,
-                sp: 0,
-                memory: [0; Self::MEMORY_SIZE],
-                stack: [0; Self::STACK_SIZE],
-                video: [0; Self::VIDEO_SIZE],
-                keys: [false; Self::N_KEYS],
-                v: [0; Self::N_REGISTERS],
-                i: Self::PROGRAM_START,
-                dt: 0,
-                st: 0,
-                error: None,
-            },
-        }
+        Self::default()
     }
 
     #[inline(always)]
@@ -197,78 +296,13 @@ impl Chip8 {
         &self.state
     }
 
-    pub fn disassemble(instruction: u16) -> DecodedInstruction {
-        let addr = instruction & 0xFFF;
-        let byte = (instruction & 0xFF) as u8;
-        let nibble = (instruction & 0xF) as u8;
-        let x = (instruction >> 8 & 0xF) as u8;
-        let y = (instruction >> 4 & 0xF) as u8;
-
-        let (op, params) = match instruction {
-            0x00E0 => ("CLS", String::new()),
-            0x00EE => ("RET", String::new()),
-            i if i & 0xF000 == 0x1000 => ("JUMP", format!("#{:04X}", addr)),
-            i if i & 0xF000 == 0x2000 => ("CALL", format!("#{:04X}", addr)),
-            i if i & 0xF000 == 0x1000 => ("JUMP", format!("#{:04X}", addr)),
-            i if i & 0xF000 == 0x2000 => ("CALL", format!("#{:04X}", addr)),
-            i if i & 0xF000 == 0x3000 => ("SE", format!("V{:X}, {:02X}", x, byte)),
-            i if i & 0xF000 == 0x4000 => ("SNE", format!("V{:X}, {:02X}", x, byte)),
-            i if i & 0xF000 == 0x5000 => ("SE", format!("V{:X}, V{}", x, y)),
-            i if i & 0xF000 == 0x6000 => ("LOAD", format!("V{:X}, {:02X}", x, byte)),
-            i if i & 0xF000 == 0x7000 => ("ADD", format!("V{:X}, {:02X}", x, byte)),
-            i if i & 0xF00F == 0x8000 => ("LOAD", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF00F == 0x8001 => ("OR", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF00F == 0x8002 => ("AND", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF00F == 0x8003 => ("XOR", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF00F == 0x8004 => ("ADD", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF00F == 0x8005 => ("SUB", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF00F == 0x8006 => ("SHR", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF00F == 0x8007 => ("SUBN", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF00F == 0x800E => ("SHL", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF00F == 0x9000 => ("SNE", format!("V{:X}, V{:X}", x, y)),
-            i if i & 0xF000 == 0xA000 => ("LOAD", format!("I, #{:04X}", addr)),
-            i if i & 0xF000 == 0xB000 => ("JUMP", format!("V0, #{:04X}", addr)),
-            i if i & 0xF000 == 0xC000 => ("RND", format!("V{:X}, #{:02X}", x, byte)),
-            i if i & 0xF000 == 0xD000 => ("DRAW", format!("V{:X}, V{:X}, {}", x, y, nibble)),
-            i if i & 0xF0FF == 0xE09E => ("SKP", format!("V{:X}", x)),
-            i if i & 0xF0FF == 0xE0A1 => ("SKNP", format!("V{:X}", x)),
-            i if i & 0xF0FF == 0xF007 => ("LOAD", format!("V{:X}, DT", x)),
-            i if i & 0xF0FF == 0xF00A => ("LOAD", format!("V{:X}, K", x)),
-            i if i & 0xF0FF == 0xF015 => ("LOAD", format!("DT, V{:X}", x)),
-            i if i & 0xF0FF == 0xF018 => ("LOAD", format!("ST, V{:X}", x)),
-            i if i & 0xF0FF == 0xF01E => ("ADD", format!("I, V{:X}", x)),
-            i if i & 0xF0FF == 0xF029 => ("FONT", format!("I, V{:X}", x)),
-            i if i & 0xF0FF == 0xF033 => ("BCD", format!("I, V{:X}", x)),
-            i if i & 0xF0FF == 0xF055 => ("SAV", format!("[I], V{:X}", x)),
-            i if i & 0xF0FF == 0xF065 => ("RST", format!("V{:X}, [I]", x)),
-            _ => ("???", String::new()),
-        };
-
-        DecodedInstruction {
-            operation: String::from(op),
-            params,
-        }
-    }
 
     pub fn soft_reset(&mut self) {
-        let state = &mut self.state;
-
-        state.pc = Self::PROGRAM_START;
-        state.sp = 0;
-        state.i = Self::PROGRAM_START;
-        state.dt = 0;
-        state.st = 0;
-        state.error = None;
-        state.stack = [0; Self::STACK_SIZE];
-        state.video = [0; Self::VIDEO_SIZE];
-        state.keys = [false; 16];
-        state.v = [0; 16];
+        self.state = Chip8State::from_state(&self.state);
     }
 
     pub fn hard_reset(&mut self) {
-        self.soft_reset();
-        self.state.memory = [0; Self::MEMORY_SIZE];
-        self.state.memory[..rom::ROM.len()].clone_from_slice(&rom::ROM);
+        self.state = Chip8State::new();
     }
 
     pub fn press_key(&mut self, key: usize) {
@@ -279,23 +313,17 @@ impl Chip8 {
         self.state.keys[key] = false;
     }
 
-    pub fn load_bytes(&mut self, bytes: &[u8]) -> Result<usize, Chip8Error> {
-        let cpu = &mut self.state;
-        let n_bytes = bytes.len();
-
-        if n_bytes > Self::MAX_PROGRAM_SIZE {
+    pub fn load_rom(&mut self, bytes: &[u8]) -> Result<usize, Chip8Error> {
+        if bytes.len() > Chip8State::MAX_PROGRAM_SIZE {
             return Err(Chip8Error::ProgramLoadError);
         }
 
-        let i = Self::PROGRAM_START;
-        cpu.memory[i..i + n_bytes].clone_from_slice(&bytes);
-
-        Ok(n_bytes)
+        self.state = Chip8State::from_rom(bytes);
+        Ok(bytes.len())
     }
 
     pub fn execute_cycle(&mut self) -> Result<(), Chip8Error> {
-        //let pc = self.state.pc;
-        //self.state.v[0xF] = 0;
+        let instruction = self.state.fetch(self.state.pc);
 
         if self.state.dt > 0 {
             self.state.dt -= 1;
@@ -305,136 +333,129 @@ impl Chip8 {
             self.state.st -= 1;
         }
 
-        let instruction: u16 = self.state.fetch(self.state.pc as u16);
         self.state.pc += 2;
-
-        self.execute(instruction)
+        self.execute(OpCode::decode(instruction))
     }
 
-    fn execute(&mut self, instruction: u16) -> Result<(), Chip8Error> {
-        let addr: usize = (instruction & 0x0FFF) as usize;
-        let byte: u8 = (instruction & 0x00FF) as u8;
-        let nibble = (instruction & 0x000F) as u8;
-        let x: usize = (instruction >> 8 & 0xF) as usize;
-        let y: usize = (instruction >> 4 & 0xF) as usize;
-
-        match instruction {
-            0x00E0 => self.cls(),
-            0x00EE => self.ret(),
-            i if i & 0xF000 == 0x1000 => self.jp(addr),
-            i if i & 0xF000 == 0x2000 => self.call(addr),
-            i if i & 0xF000 == 0x3000 => self.se_byte(x, byte),
-            i if i & 0xF000 == 0x4000 => self.sne_byte(x, byte),
-            i if i & 0xF000 == 0x5000 => self.se_reg(x, y),
-            i if i & 0xF000 == 0x6000 => self.ld_byte(x, byte),
-            i if i & 0xF000 == 0x7000 => self.add_byte(x, byte),
-            i if i & 0xF00F == 0x8000 => self.ld_reg(x, y),
-            i if i & 0xF00F == 0x8001 => self.or(x, y),
-            i if i & 0xF00F == 0x8002 => self.and(x, y),
-            i if i & 0xF00F == 0x8003 => self.xor(x, y),
-            i if i & 0xF00F == 0x8004 => self.add_reg(x, y),
-            i if i & 0xF00F == 0x8005 => self.sub(x, y),
-            i if i & 0xF00F == 0x8006 => self.shr(x),
-            i if i & 0xF00F == 0x8007 => self.subn(x, y),
-            i if i & 0xF00F == 0x800E => self.shl(x),
-            i if i & 0xF00F == 0x9000 => self.sne_reg(x, y),
-            i if i & 0xF000 == 0xA000 => self.load_i(addr),
-            i if i & 0xF000 == 0xB000 => self.jp_v0(addr),
-            i if i & 0xF000 == 0xC000 => self.rnd(x, byte),
-            i if i & 0xF000 == 0xD000 => self.drw(x, y, nibble),
-            i if i & 0xF0FF == 0xE09E => self.skp(x),
-            i if i & 0xF0FF == 0xE0A1 => self.sknp(x),
-            i if i & 0xF0FF == 0xF007 => self.ld_v_dt(x),
-            i if i & 0xF0FF == 0xF00A => self.ld_key(x),
-            i if i & 0xF0FF == 0xF015 => self.ld_dt_v(x),
-            i if i & 0xF0FF == 0xF018 => self.ld_st_v(x),
-            i if i & 0xF0FF == 0xF01E => self.add_i(x),
-            i if i & 0xF0FF == 0xF029 => self.fnt(x),
-            i if i & 0xF0FF == 0xF033 => self.bcd(x),
-            i if i & 0xF0FF == 0xF055 => self.save(x),
-            i if i & 0xF0FF == 0xF065 => self.restore(x),
+    fn execute(&mut self, opcode: OpCode) -> Result<(), Chip8Error> {
+        use cpu::OpCode::*;
+        match opcode {
+            ClearScreen => self.clear_screen(),
+            Jump { address } => self.jump(address),
+            Call { address } => self.call(address),
+            Return => self.return_(),
+            SkipByteEqual { x, byte } => self.skip_byte_equal(x, byte),
+            SkipByteNotEqual { x, byte } => self.skip_byte_not_equal(x, byte),
+            SkipEqual { x, y } => self.skip_equal(x, y),
+            LoadByte { x, byte } => self.load_byte(x, byte),
+            AddByte { x, byte } => self.add_byte(x, byte),
+            Load { x, y } => self.load(x, y),
+            Or { x, y } => self.or(x, y),
+            And { x, y } => self.and(x, y),
+            Xor { x, y } => self.xor(x, y),
+            Add { x, y } => self.add(x, y),
+            Sub { x, y } => self.sub(x, y),
+            ShiftRight { x } => self.shift_right(x),
+            SubReverse { x, y } => self.sub_reverse(x, y),
+            ShiftLeft { x } => self.shift_left(x),
+            SkipNotEqual { x, y } => self.skip_not_equal(x, y),
+            LoadAddress { address } => self.load_address(address),
+            JumpOffset { address } => self.jump_offset(address),
+            Random { x, byte } => self.random(x, byte),
+            Draw { x, y, n } => self.draw(x, y, n),
+            SkipKeyPressed { x } => self.skip_key_pressed(x),
+            SkipNotPressed { x } => self.skip_not_pressed(x),
+            LoadFromDelayTimer { x } => self.ld_v_dt(x),
+            WaitKey { x } => self.ld_key(x),
+            LoadDelayTimer { x } => self.ld_dt_v(x),
+            LoadSoundTimer { x } => self.ld_st_v(x),
+            AddAddress { x } => self.add_address(x),
+            LoadFont { x } => self.load_font(x),
+            BCD { x } => self.bcd(x),
+            Save { x } => self.save(x),
+            Restore { x } => self.restore(x),
             _ => return Err(Chip8Error::UnknownInstructionError),
         };
 
         Ok(())
     }
 
-    fn cls(&mut self) {
-        for i in 0..self.state.video.len() {
-            self.state.video[i] = 0;
+    #[inline(always)]
+    fn clear_screen(&mut self) {
+        self.state.video = [0; Chip8State::VIDEO_SIZE];
+    }
+
+    fn return_(&mut self) {
+        let state = &mut self.state;
+        if state.sp > 0 {
+            state.sp -= 1;
+            state.pc = state.stack[state.sp];
+        } else {
+            state.error = Some(Chip8Error::StackUnderflowError);
         }
     }
 
-    fn ret(&mut self) {
-        self.state.error = match self.state.sp {
-            p if p == 0 => Some(Chip8Error::StackUnderflowError),
-            _ => {
-                self.state.sp -= 1;
-                self.state.pc = self.state.stack[self.state.sp] as usize;
-                None
-            }
-        }
-    }
-
-    fn jp(&mut self, address: usize) {
+    #[inline(always)]
+    fn jump(&mut self, address: usize) {
         self.state.pc = address;
     }
 
-    fn jp_v0(&mut self, address: usize) {
-        self.state.pc = address + (self.state.v[0] as usize);
+    #[inline(always)]
+    fn jump_offset(&mut self, address: usize) {
+        self.state.pc = self.state.v[0] as usize + address;
     }
 
     fn call(&mut self, address: usize) {
-        match address {
-            a if a >= Self::MAX_PROGRAM_SIZE => {
-                self.state.error = Some(Chip8Error::AddressOutOfRangeError);
-                return;
-            }
-            _ => (),
-        }
-        self.state.stack[self.state.sp] = self.state.pc as u16;
-        self.state.sp += 1;
-        self.state.pc = address as usize;
+        let state = &mut self.state;
 
-        self.state.error = match self.state.sp {
-            sp if sp >= Self::STACK_SIZE => Some(Chip8Error::StackOverflowError),
-            _ => None,
-        };
+        if address >= Chip8State::MAX_PROGRAM_SIZE {
+            state.error = Some(Chip8Error::AddressOutOfRangeError);
+        } else if state.sp >= Chip8State::STACK_SIZE {
+            state.error = Some(Chip8Error::StackOverflowError);
+        } else {
+            state.stack[state.sp] = state.pc;
+            state.sp += 1;
+            state.pc = address as usize;
+        }
     }
 
-    fn se_byte(&mut self, x: usize, byte: u8) {
+    #[inline(always)]
+    fn skip_byte_equal(&mut self, x: usize, byte: u8) {
         if self.state.v[x] == byte {
             self.state.pc += 2;
         }
     }
 
-    fn se_reg(&mut self, x: usize, y: usize) {
+    #[inline(always)]
+    fn skip_equal(&mut self, x: usize, y: usize) {
         if self.state.v[x] == self.state.v[y] {
             self.state.pc += 2;
         }
     }
 
-    fn sne_byte(&mut self, x: usize, byte: u8) {
+    #[inline(always)]
+    fn skip_byte_not_equal(&mut self, x: usize, byte: u8) {
         if self.state.v[x] != byte {
             self.state.pc += 2;
         }
     }
 
-    fn sne_reg(&mut self, x: usize, y: usize) {
+    #[inline(always)]
+    fn skip_not_equal(&mut self, x: usize, y: usize) {
         if self.state.v[x] != self.state.v[y] {
             self.state.pc += 2;
         }
     }
 
-    fn ld_byte(&mut self, x: usize, byte: u8) {
+    fn load_byte(&mut self, x: usize, byte: u8) {
         self.state.v[x] = byte;
     }
 
-    fn ld_reg(&mut self, x: usize, y: usize) {
+    fn load(&mut self, x: usize, y: usize) {
         self.state.v[x] = self.state.v[y];
     }
 
-    fn load_i(&mut self, addr: usize) {
+    fn load_address(&mut self, addr: usize) {
         self.state.i = addr;
     }
 
@@ -442,7 +463,7 @@ impl Chip8 {
         self.state.v[x] = self.state.v[x].wrapping_add(byte);
     }
 
-    fn add_reg(&mut self, x: usize, y: usize) {
+    fn add(&mut self, x: usize, y: usize) {
         let sum = u16::from(self.state.v[x]) + u16::from(self.state.v[y]);
         self.state.v[0xF] = if sum > 0xFF { 1 } else { 0 };
         self.state.v[x] = sum as u8;
@@ -470,19 +491,19 @@ impl Chip8 {
         self.state.v[x] = ((self.state.v[x] as i32) - (self.state.v[y] as i32)) as u8;
     }
 
-    fn shr(&mut self, x: usize) {
+    fn shift_right(&mut self, x: usize) {
         let v = self.state.v[x];
         self.state.v[0xF] = v & 0x1;
         self.state.v[x] = v >> 1;
     }
 
-    fn shl(&mut self, x: usize) {
+    fn shift_left(&mut self, x: usize) {
         let v = self.state.v[x];
         self.state.v[0xF] = v >> 7;
         self.state.v[x] = v << 1;
     }
 
-    fn subn(&mut self, x: usize, y: usize) {
+    fn sub_reverse(&mut self, x: usize, y: usize) {
         if self.state.v[y] > self.state.v[x] {
             self.state.v[0xF] = 1;
         } else {
@@ -491,7 +512,7 @@ impl Chip8 {
         self.state.v[x] = self.state.v[y].wrapping_sub(self.state.v[x]);
     }
 
-    fn rnd(&mut self, x: usize, byte: u8) {
+    fn random(&mut self, x: usize, byte: u8) {
         let r = rand::random::<u8>();
         self.state.v[x] = r & byte;
     }
@@ -519,19 +540,19 @@ impl Chip8 {
         self.state.st = self.state.v[x];
     }
 
-    fn skp(&mut self, x: usize) {
+    fn skip_key_pressed(&mut self, x: usize) {
         if self.state.keys[x] {
             self.state.pc += 2;
         }
     }
 
-    fn sknp(&mut self, x: usize) {
+    fn skip_not_pressed(&mut self, x: usize) {
         if !self.state.keys[x] {
             self.state.pc += 2;
         }
     }
 
-    fn drw(&mut self, vx: usize, vy: usize, n: u8) {
+    fn draw(&mut self, vx: usize, vy: usize, n: u8) {
         let mut carry: u8 = 0;
         let x = self.state.v[vx];
         let y = self.state.v[vy];
@@ -568,11 +589,11 @@ impl Chip8 {
         };
     }
 
-    fn add_i(&mut self, x: usize) {
+    fn add_address(&mut self, x: usize) {
         self.state.i += self.state.v[x] as usize;
     }
 
-    fn fnt(&mut self, x: usize) {
+    fn load_font(&mut self, x: usize) {
         let addr = 0 + self.state.v[x] * 5;
         self.state.i = addr as usize;
     }
@@ -606,39 +627,56 @@ impl Chip8 {
 mod tests {
     use super::*;
 
+    macro_rules! execute {
+        ($cpu:expr, $opcode:expr) => {
+            let result = $cpu.execute($opcode);
+            assert!(result.is_ok());
+        };
+    }
+
     #[test]
-    fn test_load_i() {
+    fn clear_screen() {
         let mut cpu = Chip8::new();
-        cpu.state.load_i(800);
+        cpu.state.video[0] = 0xFF;
+
+        execute!(cpu, OpCode::ClearScreen);
+        assert_eq!(cpu.state.video[0], 0);
+    }
+
+    #[test]
+    fn load_address() {
+        let mut cpu = Chip8::new();
+        execute!(cpu, OpCode::LoadAddress { address: 800 });
         assert_eq!(cpu.state.i, 800);
     }
 
     #[test]
-    fn test_add_byte() {
+    fn add_byte() {
         let mut cpu = Chip8::new();
 
         cpu.state.v[0] = 5;
-        cpu.state.add_byte(0, 5);
+        execute!(cpu, OpCode::AddByte { x: 0, byte: 5 });
         assert_eq!(cpu.state.v[0], 10);
 
         cpu.state.v[0] = 255;
-        cpu.state.add_byte(0, 2);
+        execute!(cpu, OpCode::AddByte { x: 0, byte: 2 });
         assert_eq!(cpu.state.v[0], 1);
     }
 
     #[test]
-    fn test_add_reg() {
+    fn add() {
         let mut cpu = Chip8::new();
+        let op = OpCode::Add { x: 0, y: 1 };
 
         cpu.state.v[0] = 5;
         cpu.state.v[1] = 5;
-        cpu.state.add_reg(0, 1);
+        execute!(cpu, op);
         assert_eq!(cpu.state.v[0], 10);
         assert_eq!(cpu.state.v[0xF], 0);
 
         cpu.state.v[0] = 255;
         cpu.state.v[1] = 2;
-        cpu.state.add_reg(0, 1);
+        execute!(cpu, op);
         assert_eq!(cpu.state.v[0], 1);
         assert_eq!(cpu.state.v[0xF], 1);
     }
