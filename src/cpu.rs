@@ -3,7 +3,7 @@ use std::error::Error;
 use std::fmt;
 use std::string::String;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Chip8Error {
     UnknownInstructionError,
     AddressOutOfRangeError,
@@ -388,6 +388,11 @@ impl Chip8 {
             _ => return Err(Chip8Error::UnknownInstructionError),
         };
 
+        if let Some(err) = self.state.error {
+            self.state.error = None;
+            return Err(err);
+        }
+
         Ok(())
     }
 
@@ -646,6 +651,40 @@ mod tests {
         let result = cpu.execute(OpCode::ClearScreen);
         assert!(result.is_ok());
         assert_eq!(cpu.state.video[0], 0);
+    }
+
+    #[test]
+    fn call_return() {
+        let mut cpu = Chip8::new();
+        let result = cpu.execute(OpCode::Call { address: 1000 });
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.pc, 1000);
+        assert_eq!(cpu.state.sp, 1);
+        assert_eq!(cpu.state.stack[0], Chip8State::PROGRAM_START);
+
+        let result = cpu.execute(OpCode::Return);
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.pc, Chip8State::PROGRAM_START);
+        assert_eq!(cpu.state.sp, 0);
+    }
+
+    #[test]
+    fn call_return_errors() {
+        let mut cpu = Chip8::new();
+        let result = cpu.execute(OpCode::Call {
+            address: Chip8State::MAX_PROGRAM_SIZE + 1,
+        });
+
+        assert!(result.is_err());
+        assert_eq!(result.err(), Some(Chip8Error::AddressOutOfRangeError));
+
+        let mut cpu = Chip8::new();
+        cpu.state.sp = Chip8State::STACK_SIZE;
+        let result = cpu.execute(OpCode::Call { address: 1000 });
+
+        assert!(result.is_err());
+        assert_eq!(result.err(), Some(Chip8Error::StackOverflowError));
     }
 
     #[test]
