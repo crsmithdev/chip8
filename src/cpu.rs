@@ -391,9 +391,9 @@ impl Chip8 {
         if let Some(err) = self.state.error {
             self.state.error = None;
             return Err(err);
+        } else {
+            Ok(())
         }
-
-        Ok(())
     }
 
     #[inline(always)]
@@ -688,6 +688,11 @@ mod tests {
     }
 
     #[test]
+    fn jumps() {
+        let mut cpu = Chip8::new();
+    }
+
+    #[test]
     fn load_address() {
         let mut cpu = Chip8::new();
         let result = cpu.execute(OpCode::LoadAddress { address: 800 });
@@ -741,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn test_key_press_release() {
+    fn key_press_release() {
         let mut cpu = Chip8::new();
         assert_eq!(cpu.state().keys[1], false);
         cpu.press_key(1);

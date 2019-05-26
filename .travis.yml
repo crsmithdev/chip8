@@ -10,6 +10,7 @@ addons:
 
 env:
   - LD_LIBRARY_PATH=/usr/local/lib
+cache: cargo
 
 before_install: |
   wget https://www.libsdl.org/release/SDL2-2.0.9.tar.gz
@@ -26,7 +27,7 @@ before_install: |
 
 before_cache: |
   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
-    RUSTFLAGS="--cfg procmacro2_semver_exempt" cargo install cargo-tarpaulin -f
+    cargo install cargo-tarpaulin -f
   fi
 
 rust:
@@ -44,5 +45,5 @@ script:
 
 after_success: |
   if [[ "$TRAVIS_RUST_VERSION" == nightly ]]; then
-    cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID
+    cargo tarpaulin --ciserver travis-ci --coveralls $TRAVIS_JOB_ID --debug
   fi
