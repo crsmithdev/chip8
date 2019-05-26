@@ -705,6 +705,52 @@ mod tests {
     }
 
     #[test]
+    fn skips() {
+        let mut cpu = Chip8::new();
+        let pc = cpu.state.pc;
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 1 },
+            OpCode::SkipByteEqual { x: 0, byte: 1 },
+            OpCode::SkipByteNotEqual { x: 0, byte: 1 },
+        ]);
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.pc, pc + 2);
+
+        let pc = cpu.state.pc;
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 1 },
+            OpCode::SkipByteEqual { x: 0, byte: 2 },
+            OpCode::SkipByteNotEqual { x: 0, byte: 2 },
+        ]);
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.pc, pc + 2);
+
+        let pc = cpu.state.pc;
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 1 },
+            OpCode::LoadByte { x: 1, byte: 1 },
+            OpCode::SkipEqual { x: 0, y: 1 },
+            OpCode::SkipNotEqual { x: 0, y: 1 },
+        ]);
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.pc, pc + 2);
+
+        let pc = cpu.state.pc;
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 1 },
+            OpCode::LoadByte { x: 1, byte: 2 },
+            OpCode::SkipEqual { x: 0, y: 1 },
+            OpCode::SkipNotEqual { x: 0, y: 1 },
+        ]);
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.pc, pc + 2);
+    }
+
+    #[test]
     fn load_address() {
         let mut cpu = Chip8::new();
         let result = cpu.execute(OpCode::LoadAddress { address: 800 });
