@@ -804,6 +804,37 @@ mod tests {
     }
 
     #[test]
+    fn bool() {
+        let mut cpu = Chip8::new();
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 0xF0 },
+            OpCode::LoadByte { x: 1, byte: 0x0F },
+            OpCode::And { x: 0, y: 1 },
+        ]);
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.v[0], 0);
+
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 0xF0 },
+            OpCode::LoadByte { x: 1, byte: 0x0F },
+            OpCode::Or { x: 0, y: 1 },
+        ]);
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.v[0], 0xFF);
+
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 0xFF },
+            OpCode::LoadByte { x: 1, byte: 0x0F },
+            OpCode::Xor { x: 0, y: 1 },
+        ]);
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.v[0], 0xF0);
+    }
+
+    #[test]
     fn key_press_release() {
         let mut cpu = Chip8::new();
         assert_eq!(cpu.state().keys[1], false);
