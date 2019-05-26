@@ -690,6 +690,18 @@ mod tests {
     #[test]
     fn jumps() {
         let mut cpu = Chip8::new();
+        let result = cpu.execute(OpCode::Jump { address: 1000 });
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.pc, 1000);
+
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 100 },
+            OpCode::JumpOffset { address: 1000 },
+        ]);
+
+        assert!(result.is_ok());
+        assert_eq!(cpu.state.pc, 1100);
     }
 
     #[test]
