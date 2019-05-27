@@ -27,18 +27,24 @@ pub struct Audio {
 }
 
 impl Audio {
+    const FREQUENCY: i32 = 44_100;
+    const PHASE_INC: f32 = 220.0;
+    const PHASE: f32 = 0.0;
+    const VOLUME: f32 = 0.25;
+    const CHANNELS: u8 = 1;
+
     pub fn new(audio: &AudioSubsystem) -> Audio {
         let desired_spec = AudioSpecDesired {
-            freq: Some(44_100),
-            channels: Some(1),
+            freq: Some(Self::FREQUENCY),
+            channels: Some(Self::CHANNELS),
             samples: None,
         };
 
         let device = audio
             .open_playback(None, &desired_spec, |spec| SquareWave {
-                phase_inc: 220.0 / spec.freq as f32,
-                phase: 0.0,
-                volume: 0.25,
+                phase_inc: Self::PHASE_INC / spec.freq as f32,
+                phase: Self::PHASE,
+                volume: Self::VOLUME,
             })
             .unwrap();
 

@@ -504,7 +504,8 @@ impl Chip8 {
             self.state.v[0xF] = 0;
         }
 
-        self.state.v[x] = ((self.state.v[x] as i32) - (self.state.v[y] as i32)) as u8;
+        self.state.v[x] = self.state.v[x].wrapping_sub(self.state.v[y]);
+        // ((self.state.v[x] as i32) - (self.state.v[y] as i32)) as u8;
     }
 
     fn shift_right(&mut self, x: usize) {
@@ -832,6 +833,50 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(cpu.state.v[0], 0xF0);
+    }
+
+    #[test]
+    fn sub() {
+        let mut cpu = Chip8::new();
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 1 },
+            OpCode::LoadByte { x: 1, byte: 2 },
+            OpCode::Sub { x: 0, y: 1 },
+        ]);
+
+        assert_eq!(cpu.state.v[0], 255);
+        assert_eq!(cpu.state.v[0xF], 0);
+        assert!(result.is_ok());
+
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 2 },
+            OpCode::LoadByte { x: 1, byte: 1 },
+            OpCode::Sub { x: 0, y: 1 },
+        ]);
+
+        assert_eq!(cpu.state.v[0], 1);
+        assert_eq!(cpu.state.v[0xF], 1);
+        assert!(result.is_ok());
+
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 1 },
+            OpCode::LoadByte { x: 1, byte: 2 },
+            OpCode::SubReverse { x: 0, y: 1 },
+        ]);
+
+        assert_eq!(cpu.state.v[0], 1);
+        assert_eq!(cpu.state.v[0xF], 1);
+        assert!(result.is_ok());
+
+        let result = cpu.execute_all(&[
+            OpCode::LoadByte { x: 0, byte: 2 },
+            OpCode::LoadByte { x: 1, byte: 1 },
+            OpCode::SubReverse { x: 0, y: 1 },
+        ]);
+
+        assert_eq!(cpu.state.v[0], 255);
+        assert_eq!(cpu.state.v[0xF], 0);
+        assert!(result.is_ok());
     }
 
     #[test]
