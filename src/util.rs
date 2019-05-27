@@ -88,3 +88,27 @@ impl FPSCounter {
         self.fps_actual
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct TestObject {
+        value: i32,
+    }
+
+    #[test]
+    fn cache() {
+        let cache = Cache::new();
+        let obj = TestObject { value: 1 };
+        cache.put(String::from("key"), obj);
+
+        let obj_ref = cache.get_mut(&String::from("key"));
+        assert!(obj_ref.is_some());
+        obj_ref.unwrap().value = 2;
+
+        let obj_ref = cache.get(&String::from("key"));
+        assert!(obj_ref.is_some());
+        assert_eq!(obj_ref.unwrap().value, 2);
+    }
+}
