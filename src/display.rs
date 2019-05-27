@@ -1,4 +1,4 @@
-use cache::RefCache;
+use util::Cache;
 use cpu::OpCode;
 use logger::Logger;
 use sdl2::pixels::{Color, PixelFormatEnum};
@@ -14,6 +14,7 @@ use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
 use vm::UpdateState;
+
 
 const WINDOW_WIDTH: u32 = 1024;
 const WINDOW_HEIGHT: u32 = 576;
@@ -39,7 +40,7 @@ lazy_static! {
     static ref RECT_REGISTERS: Rect = Rect::new(740, 815, 790, 317);
 }
 
-pub type TextureCache = RefCache<String, Texture>;
+pub type TextureCache = Cache<String, Texture>;
 type ContextRef<'a> = Rc<Context<'a>>;
 
 macro_rules! text {

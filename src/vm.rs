@@ -1,3 +1,4 @@
+use audio::Audio;
 use cpu::{Chip8, Chip8State};
 use display::{Display, TextureCache};
 use logger::Logger;
@@ -6,7 +7,7 @@ use rom;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::ttf::Sdl2TtfContext;
-use sdl2::{EventPump, Sdl};
+use sdl2::{AudioSubsystem, EventPump, Sdl};
 use std::cmp::{max, min};
 use std::env::current_dir;
 use std::fs::File;
@@ -15,11 +16,13 @@ use std::thread;
 use std::time::{Duration, SystemTime};
 use util::FPSCounter;
 
+
 const HZ_MAX: u32 = 2000;
 const HZ_MIN: u32 = 1;
 const HZ_DEFAULT: u32 = 500;
 const FPS_DEFAULT: u32 = 60;
 const DELAY_BG: u64 = 50;
+
 
 macro_rules! round {
     ($num:expr, $nearest:expr) => {
@@ -30,6 +33,7 @@ macro_rules! round {
 pub struct VMArgs<'a> {
     pub sdl: &'a Sdl,
     pub ttf: &'a Sdl2TtfContext,
+    pub audio: &'a AudioSubsystem,
     pub log: &'static Logger,
     pub cache: &'a TextureCache,
 }
@@ -57,6 +61,7 @@ pub struct UpdateState<'a> {
 pub struct VM<'a> {
     pub cpu: Chip8,
     display: Display<'a>,
+    audio: Audio,
     events: EventPump,
     state: RunState,
 }
@@ -67,6 +72,7 @@ impl<'a> VM<'a> {
 
         VM {
             display: Display::new(args.sdl, args.ttf, args.log, args.cache),
+            audio: Audio::new(args.audio),
             events: args.sdl.event_pump().unwrap(),
             cpu: chip8,
             state: RunState {
@@ -104,6 +110,10 @@ impl<'a> VM<'a> {
                 self.state.last_step = SystemTime::now();
             }
 
+            /*
+
+            */
+
             if self.state.cpu_state == CPUState::OneStep {
                 self.state.cpu_state = CPUState::Paused;
             }
@@ -113,6 +123,11 @@ impl<'a> VM<'a> {
                 cpu: self.cpu.state(),
                 run: &self.state,
             });
+            if self.cpu.state().st() > 0 {
+                self.audio.on();
+            } else {
+                self.audio.off();
+            }
 
             let delay = fps.frame() as u64;
             let paused = self.state.cpu_state == CPUState::Paused;
